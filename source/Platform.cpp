@@ -1,5 +1,6 @@
 
 #include "Platform.h"
+#include "Units.h"
 
 
 
@@ -12,17 +13,21 @@
  * 
  * \note  The jitterGenerator has been configured in Simulation::Simulation()
  */
-
-Platform::Platform(ConfigurationParameters configParams, HDF5File &hdf5File, JitterGenerator &jitterGenerator)
-: HDF5Writer(hdf5File), useJitter(true), internalTime(0.0), jitterGenerator(jitterGenerator)
+Platform::Platform(ConfigurationParameters configParams,
+		   HDF5File &hdf5File,
+		   JitterGenerator &jitterGenerator)
+: HDF5Writer(hdf5File),
+  useJitter(true),
+  internalTime(0.0),
+  jitterGenerator(jitterGenerator)
 {
-    // Initialise the HDF5 group(s) in the output file
-
-    initHDF5Groups();
-
     // Configure the Platfrom object
 
     configure(configParams);
+
+    // Initialise the HDF5 group(s) in the output file
+
+    initHDF5Groups();
 
     // Initialise the rotation matrices (should be done after configuration) with the unjittered spacecraft
 
@@ -55,7 +60,6 @@ Platform::~Platform()
 
 
 
-
 /**
  * \brief Configure the Platform object
  * 
@@ -64,29 +68,38 @@ Platform::~Platform()
 
 void Platform::configure(ConfigurationParameters &configParams)
 {
-    useJitter   = configParams.getBoolean("Platform/UseJitter");
-    originalRA  = deg2rad(configParams.getDouble("ObservingParameters/RApointing"));            
-    originalDec = deg2rad(configParams.getDouble("ObservingParameters/DecPointing"));
-    double solarPanelOrientation = deg2rad(configParams.getDouble("Platform/SolarPanelOrientation"));
-    writeACS    = configParams.getBoolean("ControlHDF5Content/WriteACS");
-         
-    currentRA   = originalRA;
-    currentDec  = originalDec;
+  // General configuration parameters
+  
+  useJitter = configParams.getBoolean("Platform/UseJitter");
+  writeACS  = configParams.getBoolean("ControlHDF5Content/WriteACS");
+  platformOrientationSource = configParams.getString("Platform/Orientation/Source");
 
-    // Derive the location of the Sun. This depends on where the platform is pointing and
-    // on the solar panel orientatin, which is specified in the yaml input file.
-    
-    double lambdaPlatform;                                 // Ecliptic longitude of the platform pointing [rad]
-    double betaPlatform;                                   // Ecliptic latitude  of the platform pointing [rad]
-    equatorial2ecliptic(originalRA, originalDec, lambdaPlatform, betaPlatform);
-
-    double lambdaSun = lambdaPlatform - Constants::PI + solarPanelOrientation;
-    if (lambdaSun < 0.0) lambdaSun += 2.0 * Constants::PI;
-    ecliptic2equatorial(lambdaSun, 0.0, raSun, decSun);
-
-    Log.debug("Platform: solar panel orientation = " + to_string(rad2deg(solarPanelOrientation)) + " deg");
-    Log.debug("Platform: (RA Sun, Dec Sun) = (" + to_string(rad2deg(raSun)) + ", " + to_string(rad2deg(decSun)) + ")");
-
+  // Select method of platform pointing
+  
+  if (platformOrientationSource == "Angles")
+    {
+      Log.info("Platform: using the (RA, Dec, Kappa) angles to determine the initial platform orientation");
+      originalRA  = deg2rad(configParams.getDouble("Platform/Orientation/Angles/RAPointing"));            
+      originalDec = deg2rad(configParams.getDouble("Platform/Orientation/Angles/DecPointing"));
+      originalKappa = deg2rad(configParams.getDouble("Platform/Orientation/Angles/SolarPanelOrientation"));
+      currentRA   = originalRA;
+      currentDec  = originalDec;
+      Log.debug("Platform: (RA, Dec, Kappa) = (" + to_string(rad2deg(originalRA)) + " deg, " + to_string(rad2deg(originalDec)) + " deg, " + to_string(rad2deg(originalKappa)) + " deg)");
+    }
+  else if (platformOrientationSource == "Quaternion")
+    {
+      Log.info("Platform: using the Platform/Orientation/Quaternion to determine the initial platform orientation");
+      vector<double> quaternion = configParams.getDoubleVector("Platform/Orientation/Quaternion/Components");
+      copy(quaternion.begin(), quaternion.end(), original_q_EQ2PLM.begin());
+      tie(originalRA, originalDec) = calculatePlatFormSkyCoordinatesFromQuaternion(original_q_EQ2PLM);         // [rad]
+      currentRA  = originalRA;                                                                                 // [rad]
+      currentDec = originalDec;                                                                                // [rad]
+      Log.debug("Platform: (RA, Dec) from quaternion = (" + to_string(rad2deg(originalRA)) + " deg, " + to_string(rad2deg(originalDec)) + " deg)");
+    }
+  else
+    {
+      Log.error("In input yaml file: unsupported Platform/Orientation/Source value. Only Angles or Quaternion are allowed");
+    }
 }
 
 
@@ -107,9 +120,11 @@ void Platform::configure(ConfigurationParameters &configParams)
 
 void Platform::initHDF5Groups()
 {
-    Log.debug("Platform: initialising HDF5 groups");
-
-    hdf5File.createGroup("/ACS");
+  if (writeACS)
+    {
+      Log.debug("Platform: initialising HDF5 group: ACS");
+      hdf5File.createGroup("/ACS");
+    }
 }
 
 
@@ -125,33 +140,31 @@ void Platform::initHDF5Groups()
 /**
  * \brief Write all recorded information to the HDF5 output file
  */
-
 void Platform::flushOutput()
 {
-    if (writeACS)
+  if (writeACS)
     {
-        Log.info("Platform: Flushing output to HDf5 file.");
+      Log.info("Platform: Flushing output to HDf5 file.");
 
-        if ( ! hdf5File.hasGroup("ACS") )
+      if (!hdf5File.hasGroup("/ACS"))
         {
-            Log.warning("Platform.flushOutput: HDF5 file has no ACS group, cannot flush Platform information.");
-            return;
+	  Log.warning("Platform.flushOutput: HDF5 file has no ACS group, cannot flush Platform information.");
+	  return;
         }
-        
 
-         if (!historyTime.empty())
-         {
-            hdf5File.writeArray("/ACS/", "Time",        historyTime.data(),  historyTime.size());
-            hdf5File.writeArray("/ACS/", "PlatformRA",  historyRA.data(),    historyRA.size());
-            hdf5File.writeArray("/ACS/", "PlatformDec", historyDec.data(),   historyDec.size());
-            hdf5File.writeArray("/ACS/", "Yaw",         historyYaw.data(),   historyYaw.size());
-            hdf5File.writeArray("/ACS/", "Pitch",       historyPitch.data(), historyPitch.size());
-            hdf5File.writeArray("/ACS/", "Roll",        historyRoll.data(),  historyRoll.size());
-         }
-         else
-         {
-            Log.warning("Platform: No ACS history to flush to HDF5 file.");
-         }
+      if (!historyTime.empty())
+        {
+	  hdf5File.writeArray("/ACS", "time",        historyTime.data(),  historyTime.size());
+	  hdf5File.writeArray("/ACS", "platformRA",  historyRA.data(),    historyRA.size());
+	  hdf5File.writeArray("/ACS", "platformDec", historyDec.data(),   historyDec.size());
+	  hdf5File.writeArray("/ACS", "yaw",         historyYaw.data(),   historyYaw.size());
+	  hdf5File.writeArray("/ACS", "pitch",       historyPitch.data(), historyPitch.size());
+	  hdf5File.writeArray("/ACS", "roll",        historyRoll.data(),  historyRoll.size());
+        }
+      else
+        {
+	  Log.warning("Platform: No ACS history to flush to HDF5 file.");
+        }
     }
 }
 
@@ -186,7 +199,31 @@ void Platform::setPointingCoordinates(double rightAscencsion, double declination
 
 
 
+/**
+  * \brief Compute the RA, Declination coordinates given a quaterntion in the equatorial reference frame.
+  *
+  * \param q   Unit quaternion (q0, qx, qy, qz) describing the passive rotation from the equatorial reference 
+  *            system to the platform reference system so that:
+  *                 vec_PLM = q^* . vec_EQ . q
+  *
+  * \return (RA, Dec)   [rad]
+  */   
+pair<double, double> Platform::calculatePlatFormSkyCoordinatesFromQuaternion(quaternionType q_EQ2PLM)
+{
+    // In the Platform reference frame, the platform pointing vector corresponds with the z-axis (roll-axis)
 
+    quaternionType v_PLM = {0.0, 0.0, 0.0, 1.0};
+    quaternionType v_EQ = qmul(q_EQ2PLM, qmul(v_PLM, conj(q_EQ2PLM)));             // Real part can be ignored
+
+    const double r = sqrt(v_EQ[1]*v_EQ[1] + v_EQ[2]*v_EQ[2] + v_EQ[3]*v_EQ[3]);
+    const double dec = PI / 2.0 - acos(v_EQ[3]/r);                                 // Declination     [rad]
+    double RA = atan2(v_EQ[2], v_EQ[1]);                                           // Right Ascension [rad]
+    if (RA < 0.0) RA += 2 * PI; 
+    
+    // That's it
+
+    return make_pair(RA, dec);
+}
 
 
 
@@ -225,9 +262,9 @@ void Platform::updatePlatformOrientation(double time)
             if (time == historyTime.back())
             {
                 Log.debug("Platform: updatePlatformOrientation(): coordinates up-to-date for requested time " + to_string(time));
-                Log.debug("Platform: At time " + to_string(time) + ": (RA, dec) = (" 
+                Log.debug("Platform: updatePlatformOrientation(): At time " + to_string(time) + ": (RA, dec) = (" 
                                                + to_string(historyRA.back()) + ", " 
-                                               + to_string(historyDec.back()) + ")");
+                                               + to_string(historyDec.back()) + ") before applying jitter step.");
                 return;
             }
         }
@@ -236,7 +273,7 @@ void Platform::updatePlatformOrientation(double time)
         // Let the platfrom jitter until 'time'. Yaw, pitch, and roll are in [rad]
         tie(yaw, pitch, roll) = jitterGenerator.getNextYawPitchRoll(time);
 
-        Log.debug("Platform: At time " + to_string(time) + ": (yaw, pitch, roll) = (" 
+        Log.debug("Platform: updatePlatformOrientation(): At time " + to_string(time) + ": (yaw, pitch, roll) = (" 
                                        + to_string(rad2deg(yaw)*3600.) + ", " 
                                        + to_string(rad2deg(pitch)*3600.) + ", " 
                                        + to_string(rad2deg(roll)*3600.) + ") arcsec");
@@ -289,7 +326,7 @@ void Platform::updatePlatformOrientation(double time)
 
     Log.debug("Platform: At time " + to_string(time) + ": (RA, dec) = (" 
                                    + to_string(rad2deg(currentRA)) + ", " 
-                                   + to_string(rad2deg(currentDec)) + ")");
+                                   + to_string(rad2deg(currentDec)) + ") after applying jitter step.");
 
     // Update the internal clock
 
@@ -454,38 +491,17 @@ double Platform::getHeartbeatInterval()
  *               vecEQ = rotSC2EQ * vecSC
  *        where vecEQ are cartesian coordinates in the equatorial reference frame, and vecSC are the 
  *        cartesian coordinates in the Spacecraft (platform) reference frame.
- *        See PLATO-KUL-PL-TN-0001 for more details
+ *        See PLATO-KUL-PL-TN-0001 for more details on the definition of the rotation matrices.
  *
  * \return rotSC2EQ : 3x3 rotation matrix 
  */
 
 arma::mat Platform::getUnjitteredSpacecraftToEquatorialRotationMatrix()
 {
-    // Compute the equatorial coordinates of each of the unit vectors corresponding to the X, Y, and Z axis
-    // of the spacecraft reference frame. The z-axis is pointing towards the targets, the x-axis points towards
-    // the highest point of the sun shield which is pointing towards the Sun. The coordinates of the Sun were
-    // computed in Platform::configure()
-
-    double deltax = atan(- cos(originalRA-raSun) / tan(originalDec));
-
-    arma::colvec unitzSC = {cos(originalDec)*cos(originalRA), cos(originalDec)*sin(originalRA), sin(originalDec)};
-    arma::colvec unitxSC = {cos(deltax)*cos(raSun), cos(deltax)*sin(raSun), sin(deltax)};
-    arma::colvec unitySC = arma::cross(unitzSC, unitxSC);
-
-    // Compute the rotation matrix to convert cartesian coordinates in the equatorial reference frame to 
-    // cartesian coordinates in the spacecraft reference frame
-
-    arma::mat rotSC2EQ;
-    rotSC2EQ << unitxSC[0] << unitySC[0] << unitzSC[0] << arma::endr
-             << unitxSC[1] << unitySC[1] << unitzSC[1] << arma::endr
-             << unitxSC[2] << unitySC[2] << unitzSC[2] << arma::endr;
-    
-
-    // That's it
-
+    arma::mat rotEQ2SC = getEquatorialToUnjitteredSpacecraftRotationMatrix();
+    arma::mat rotSC2EQ = rotEQ2SC.t();
     return rotSC2EQ;
 }
-
 
 
 
@@ -514,10 +530,42 @@ arma::mat Platform::getUnjitteredSpacecraftToEquatorialRotationMatrix()
 
 arma::mat Platform::getEquatorialToUnjitteredSpacecraftRotationMatrix()
 {
-    arma::mat rotSC2EQ = getUnjitteredSpacecraftToEquatorialRotationMatrix();
-    arma::mat rotEQ2SC = rotSC2EQ.t();
+    if (platformOrientationSource == "Angles") 
+    {
+        arma::mat rotEQ2A;
+        rotEQ2A <<  cos(originalRA) << sin(originalRA) << 0.0 << arma::endr
+                << -sin(originalRA) << cos(originalRA) << 0.0 << arma::endr
+                <<        0.0       <<        0.0      << 1.0 << arma::endr;
 
-    return rotEQ2SC;
+        arma::mat rotA2B;
+        rotA2B << sin(originalDec) << 0.0 << -cos(originalDec) << arma::endr
+               <<       0.0        << 1.0 <<        0.0        << arma::endr
+               << cos(originalDec) << 0.0 <<  sin(originalDec) << arma::endr;
+        
+        arma::mat rotB2SC;
+        rotB2SC <<  cos(originalKappa) << sin(originalKappa) << 0.0 << arma::endr
+                << -sin(originalKappa) << cos(originalKappa) << 0.0 << arma::endr
+                <<        0.0          <<        0.0         << 1.0 << arma::endr;
+
+        arma::mat rotEQ2SC = rotB2SC * rotA2B * rotEQ2A;
+
+        return rotEQ2SC;
+    }
+    else    // platformOrientationSource == "Quaternion"
+    {
+        // Convert the quaternion into a rotation matrix. 
+        
+        const double q0 = original_q_EQ2PLM[0];
+        const double qx = original_q_EQ2PLM[1];
+        const double qy = original_q_EQ2PLM[2];
+        const double qz = original_q_EQ2PLM[3];
+        arma::mat rotEQ2SC;                                                                         // Passive rotation matrix! 
+        rotEQ2SC << 2*(q0*q0+qx*qx)-1 << 2*(qx*qy+q0*qz)   << 2*(qx*qz-q0*qy)   << arma::endr
+                 << 2*(qx*qy-q0*qz)   << 2*(q0*q0+qy*qy)-1 << 2*(qy*qz+q0*qx)   << arma::endr
+                 << 2*(qx*qz+q0*qy)   << 2*(qy*qz-q0*qx)   << 2*(q0*q0+qz*qz)-1 << arma::endr;
+
+        return rotEQ2SC;
+    }
 }
 
 
@@ -587,36 +635,6 @@ arma::mat Platform::getUnjitteredToJitteredRotationMatrix(const double yaw, cons
 
     return Ryaw  * Rpitch * Rroll;
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-/**
- * \brief Return the right ascension and declination of the Sun in the middle of the time series
- * \details It is assumed that the Sun is always 180 degrees away from platform pointing in the middle of the time series.
- * 
- * \return raSun:  Right Ascension of the Sun [rad]
- *         decSun: Declination of the Sun [rad]
- */
-
-tuple<double, double> Platform::getRADecSun()
-{
-    return make_pair(raSun, decSun);
-}
-
-
 
 
 

@@ -44,7 +44,7 @@ class ElectronicOffset(Test):
 
         # Calculate the expected sky background
         exposureTime = self.simFile.getInputParameter("ObservingParameters", "CycleTime") - self.sim.getReadoutTime()[0]
-        backGround = self.simFile.getInputParameter("Sky", "SkyBackground")
+        backGround = self.simFile.getInputParameter("Sky/SkyBackground", "BackgroundValue")
         transMissionEfficiencyBOL = self.simFile.getInputParameter("Telescope/TransmissionEfficiency", "BOL")
         expectedSkyBackground = backGround * exposureTime * transMissionEfficiencyBOL * self.sim["FEE/Gain/RefValueLeft"] * self.sim["CCD/Gain/RefValueLeft"]
 

@@ -11,6 +11,7 @@
 
 #include "Faddeeva.hh"
 
+#include "StrayLight.h"
 #include "Constants.h"
 #include "ArrayOperations.h"
 #include "Mathematics.h"
@@ -27,7 +28,10 @@
 #include "Units.h"
 #include "Parameter.h"
 
+
 using namespace std;
+
+class StrayLight;
 
 class Camera;      // forward declaration
 
@@ -88,10 +92,13 @@ class Detector: public HDF5Writer
 
         bool isInPixelMap(double row, double column);
         bool isInSubfield(double xFPmm, double yFPmm);
+        bool constantSkyBackground;
 
         double getReadoutTimeBeforeNextExposure();
         virtual void applyDistortion(double &, double &){};
         virtual void applyInverseDistortion(double &, double &){};
+        void addBackgroundMapToPixelMap(Camera &camera, double startTime);
+        void addStraylightToPixelMap(double startTime);
 
     protected:
 
@@ -124,6 +131,15 @@ class Detector: public HDF5Writer
         virtual void applyDigitalSaturation();
         virtual void applyOverAndUnderShoot();
 
+        void generateBadPixelMap();
+        void applyBadPixelMap();
+
+        RaggedArray subFieldCosmics;
+        RaggedArray smearingCosmics;
+        RaggedArray leftBiasCosmics;
+        RaggedArray rightBiasCosmics;
+
+        StrayLight *straylight;
         void applySimpleCTImodel();
         void applyShort2013CTImodel(string map);
         void makeSubGroupForCosmics(string field, int exposureNr);
@@ -135,10 +151,14 @@ class Detector: public HDF5Writer
         arma::Mat<float> getSubfield();
 
         virtual void initHDF5Groups() override;
+        // TODO implement writing of time here
+
         virtual void writePixelMapsToHDF5(int exposureNr);
-        virtual void writeCosmicHitsToHDF5WithoutGroupByExposure(int exposureNr);
-        virtual void writeCosmicHitsToHDF5WhenGroupByExposure(int exposureNr);
+
+        virtual void writeCosmicHitsToHDF5(int exposureNr);
+        virtual void writeBackgroundMapToHDF5();
         virtual void writeCTIToHDF5();
+        void writeBadPixelMapToHDF5();
 
         double getRowEdgeFOV(int column);
 
@@ -152,7 +172,7 @@ class Detector: public HDF5Writer
         vector<unsigned int> columnsOfCosmicsInSmearingMap;
         vector<double> fluxOfCosmicsInSmearingMap;
 
-
+        vector<double> straylightValues;
         vector<unsigned int> rowsOfCosmicsInBiasMapLeft;
         vector<unsigned int> columnsOfCosmicsInBiasMapLeft;
         vector<double> fluxOfCosmicsInBiasMapLeft;
@@ -160,15 +180,21 @@ class Detector: public HDF5Writer
         vector<unsigned int> rowsOfCosmicsInBiasMapRight;
         vector<unsigned int> columnsOfCosmicsInBiasMapRight;
         vector<double> fluxOfCosmicsInBiasMapRight;
+        void fillBackgroundMap(Camera &camera, double startTime, double exposureTime);
 
         int coveredLeft, coveredRight;            // Amount of pixels in the subfield that are blocked off from light because of the metallic schield
         int coveredBottom, coveredTop;
 
         arma::Mat<float> pixelMap;               // Pixel map, excl. edge pixels
+        arma::Mat<float> backgroundMap;          // Sub-pixel map, incl. edge pixels
         arma::Mat<float> smearingMap;            // Smearing map (i.e. over-scan strip)
         arma::Mat<float> biasMapLeft;            // Bias map (i.e. pre-scan strip) for the left detector half
         arma::Mat<float> biasMapRight;           // Bias map (i.e. pre-scan strip) for the right detector half
-        arma::Mat<float> throughputMap;          // Throughput efficiency map, due to vignetting, particulate & molecular contamination, and quantum efficiency
+        arma::Mat<float> throughputMap;          // Throughput efficiency map, due to
+                                                 // vignetting, particulate & molecular
+                                                 // contamination, and quantum efficiency
+        arma::Mat<int> badPixelMap;
+    
 
         double missionDuration;                  // Duration of the PLATO Mission, used for degrading parameters      [s]
 
@@ -201,13 +227,17 @@ class Detector: public HDF5Writer
         int bfeNeighbors[4][2];                  // Neighbours X for the BFE in Sect. 5.2 in Guyonnet et al. 2015
         int bfeRange;                            // How far pixels can be apart and still influence each other [pixels] (use window with dimensions 2 * range + 1)
 
-        bool includeCosmicsInSubField;           // Whether or not to include cosmic hits in the subfield
+        bool includeCosmicsInSubField;           // Whether or not to include cosmic hits
+                                                 // in the subfield
+        bool includeStraylight;                  // Wheter or not to include straylight
+                                                 // in the subfield
+        bool includeBadPixelMap; 
         bool includeCosmicsInSmearingMap;        // Whether or not to include cosmic hits in the (physical) overscan region
         bool includeCosmicsInBiasMap;            // Whether or not to include cosmic hits in the (virtual) prescan region
         bool groupByExposure;                    
         double cosmicHitRate;				     // Cosmic hit rate [events / cm^2 / s]
         vector<double> cosmicTrailLengthParams;  // Distribution parameters of the length of the cosmic trails          [pixels]
-        vector<double> cosmicIntensityParams;    // Skew-Normal distribution parameters fo the intensity of the intensities of the cosmics 
+        vector<double> cosmicIntensityParams;    // Skew-Normal distribution parameters fo the intensity of the intensities of the cosmics
 
         vector<unsigned int> cosmicEntryRowSubfield;     // rows in the subfield where the cosmic hit the CCD                 [pixel]
         vector<unsigned int> cosmicEntryColSubfield;     // columns in the subfield where the cosmic hit the CCD              [pix]
@@ -234,7 +264,8 @@ class Detector: public HDF5Writer
         vector<double> cosmicsIntensitiesBiasMapRight;   // total number of electrons the cosmic will release over its trail  [e-]
         int cosmicSubgroupIndex=-1;                      // Keeps track of which subgroup in HDF5 file is being filled when saving the cosmics
 
-        vector<double> relTransmissivityCoefVector;
+        vector<double> relTransmissivityCoefVector;      // To take into account the transmissivity, including the vignetting
+        vector<double> gainNonlinearityCoefficients;     // To take into account the non-linear behaviour of the gain
         double radiusFOV;                        // Radius of the FOV [radians]
         double expectedValueRelativeTransmissivity; // Expected value of the relative transmissivity for the sub-field
         double expectedValuePolarization;        // Expected value of the throughput efficiency due to polarisation
@@ -264,25 +295,30 @@ class Detector: public HDF5Writer
         double darkCurrentStability;             // Temperature stability of the dark current [e / K / s]
         bool writePixelMaps;                     // Whether or not to write the pixel maps of the subfield to the HDF5 file, for each exposure
         bool writeBiasMaps;                      // Whether or not to write the bias maps (left and right) to the HDF5 file, for each exposure
-        bool writeSmearingMaps;                  // Whether or not to write the smearing maps to the HDF5 file, for each exposure 
+        bool writeBackgroundMap;                  // Wheter or not to write the background map to the HDF5 file.
+        bool writeSmearingMaps;                  // Whether or not to write the smearing maps to the HDF5 file, for each exposure
         bool writeThroughputMaps;                // Whether or not to write the throughput maps to the HDF5 file, for each exposure
+        bool writeFlatfieldMap;                  // Whether or not to write the flatfield map to the HDF5 file, for each exposure  
         bool writeCosmics;                       // Whether or not to write the cosmics row, column and flux to the HDF5 file, for each exposure
-        bool writeCTI;                           // Whether or not to write the BOL/EOL trap density maps for each species to the HDF5 file
+        bool writeCTI;                           // Whether or not to write the BOL/EOL trap density maps
+                                                 // for each species to the HDF5 file
+        bool writeBadPixelMap;                   // Wheter or not to write the bad pixel map
 
         string CTImodel;
         double meanCte;                          // Mean charge-transfer efficiency  (in [0,1])
         double beta;                             // Beta exponent in Short et al., MNRAS 430, 3078-3085 (2010).
         double temperature;                      // Temperature of the detector
         unsigned int numTrapSpecies;             // Number of different trap species included in the Short2010 model
-        vector<double> meanTrapDensityBOL;       // mean (averaged over entire CCD) trap density of each trap species at Beginning-Of-Live [traps/pixel] 
-        vector<double> meanTrapDensityEOL;       // mean (averaged over entire CCD) trap density of each trap species at End-Of-Live [traps/pixel] 
+        vector<double> meanTrapDensityBOL;       // mean (averaged over entire CCD) trap density of each trap species at Beginning-Of-Live [traps/pixel]
+        vector<double> meanTrapDensityEOL;       // mean (averaged over entire CCD) trap density of each trap species at End-Of-Live [traps/pixel]
         vector<double> trapCaptureCrossSection;  // For each trap species: the trap capture cross section [m^2]
         vector<double> releaseTime;              // For each trap species: the electron release time [s]
+
+        HDF5File CTIFile;                        // Input CTI file with the trap density maps, contains the info below.
         arma::Mat<float> radiationMap;           // Normalized radiation map for the subfield under consideration [p+ / s]
         arma::Mat<float> radiationSmearingMap;   // Normalized radiation map for the smearing map under consideration [p+ / s]
-        arma::Mat<float> numberOfOccupiedTrapsPixelMap;  // Number of occupied traps in the Short2013 CTI model
-        arma::Mat<float> numberOfOccupiedTrapsSmearingMap;
-        HDF5File CTIFile;                        // Input CTI file with the trap density maps
+        arma::Mat<float> numberOfOccupiedTrapsPixelMap;      // Number of occupied traps in the Short2013 CTI model, when specified in ...
+        arma::Mat<float> numberOfOccupiedTrapsSmearingMap;   // ... a file, to allow a for spatially varying trap density.
 
         double chargeInjectionLevel;             // Percentage of the full well to be filled by charge injection [0-100]
         int injectionRowInterval;                // Charge will be injected every XX CCD row [integer: in 1 - numrows] starting from firstInjectedRow.
@@ -294,6 +330,7 @@ class Detector: public HDF5Writer
 
         bool includeBFE;                         // Whether or not to include the BFE
         bool includeDarkSignal;                  // Whether or not to include dark
+        bool includeFieldDistortion;             // Whether or not to include field distortion
         bool includePhotonNoise;                 // Whether or not to include photon noise
         bool includeReadoutNoise;                // Include readout noise [yes or no]
         bool includeCTIeffects;                  // Include CTI effects [yes or no]
@@ -307,10 +344,13 @@ class Detector: public HDF5Writer
         bool includeFullWellSaturation;          // Whether or not full well saturation should be applied
         bool includeDigitalSaturation;           // Whether or not digital saturation should be applied
         bool includeQuantisation;                // Whether or not to include quantisation
+        bool includeGainNonlinearity;            // Whether or not to include a non-linear gain (e- -> ADU)
+        double transmissionEfficiencyBOS;        // Transmission efficiency at the begining of the simulation.
 
         int beginExposureNr;                     // Sequential number of the very first exposure. See yaml input file.
         int finalExposureNr;                     // Sequential number of the very last exposure: beginExposureNr + numExposures
 
+        double badPixelParameter;
         double nominalOperatingTemperature;
         double internalTime;
 
@@ -318,6 +358,7 @@ class Detector: public HDF5Writer
         long readoutNoiseSeed;
         long photonNoiseSeed;
         long cosmicSeed;
+        long badPixelSeed;
 
         mt19937 darkSignalGenerator;
         mt19937 darkNoiseGenerator;
@@ -330,6 +371,8 @@ class Detector: public HDF5Writer
         mt19937 cosmicTrailLengthGenerator;
         mt19937 cosmicIntensityGenerator;
         mt19937 decimalNumCosmicHitsGenerator;
+        mt19937 badPixelGenerator;
+    
 
         normal_distribution<double> darkSignalDistribution;
         normal_distribution<double> darkNoiseDistribution;
@@ -342,6 +385,7 @@ class Detector: public HDF5Writer
         uniform_real_distribution<double> cosmicTrailLengthDistribution;
         skew_normal_distribution cosmicIntensityDistribution;
         uniform_real_distribution<double> decimalNumCosmicHitsDistribution;
+        bernoulli_distribution badPixelDistribution;
 
         Camera &camera;
         FrontEndElectronics *frontEndElectronics;
@@ -352,5 +396,7 @@ class Detector: public HDF5Writer
 
         void readCTIinputFile(string ctiInputFile);
 };
+
+arma::Mat<uint16_t> floatToUint(arma::Mat<float> &A, string mapName);
 
 #endif

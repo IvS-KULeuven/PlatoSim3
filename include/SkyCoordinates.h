@@ -18,21 +18,21 @@ class SkyCoordinates
     public:
 
         SkyCoordinates(double RA, double decl, Unit angleUnit = Angle::degrees);
-        ~SkyCoordinates(); 
+        ~SkyCoordinates();
 
         pair<double, double> toGalactic(Unit angleUnit = Angle::degrees);
         pair<double, double> toEcliptic(Unit angleUnit = Angle::degrees);
 
- 
+
         friend double angularDistanceBetween(SkyCoordinates &skyCoordinates1, SkyCoordinates &skyCoordinates2, Unit outputAngleUnit);
 
     protected:
 
         double RA;                    // Equatorial right ascension [rad]
         double decl;                  // Equatorial declination     [rad]
- 
+
     private:
-    
+
 };
 
 

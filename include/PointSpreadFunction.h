@@ -8,6 +8,7 @@
 
 #include "ArrayOperations.h"
 #include "ConfigurationParameters.h"
+#include "Parameter.h"
 #include "HDF5File.h"
 #include "HDF5Writer.h"
 
@@ -35,6 +36,8 @@ class PointSpreadFunction : public HDF5Writer
         arma::fmat getOriginalPSF();
         vector<std::array<double, 4>> getDistortionMap();
         bool writeHighResolutionPSF;
+        bool writeDiffusedPSF;
+        bool includeChargeDiffusion;
         vector<std::array<double, 4>> distortionMap;
 
     protected:
@@ -53,7 +56,7 @@ class PointSpreadFunction : public HDF5Writer
         bool isRotated = false;
 
         // Indicates whether this PSF has been rebinned
-        
+
         bool isRebinned = false;
 
         // Absolute path to the HDF5 file with the PSFs
@@ -76,9 +79,16 @@ class PointSpreadFunction : public HDF5Writer
 
         unsigned int numberOfPixels;
 
+        // Focal length
+        double focalLengthValue;
+
         // Actual rotation angle of the PSF with respect to the x-axis orientation of the focal plane
 
         double rotationAngle = 0.0;    // [radians]
+
+        void initializeDistortionMap();
+        void readDistortionmapFromFile();
+        void generateDistortionMap();
 };
 
 #endif

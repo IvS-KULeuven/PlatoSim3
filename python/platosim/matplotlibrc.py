@@ -1,12 +1,18 @@
 #!/usr/bin/env python3
 
 """
-This script is used to configure the matplotlibrc file in order to consistantly
-use the same settings for all plots.
+This script is used to configure the matplotlibrc file in order to 
+consistantly use the same settings for all plots.
 """
 
+# Built-in
 import os
+import shutil
+import warnings
+
+# PlatoSim standard
 import matplotlib.pyplot as plt
+
 
 
 def setup():
@@ -39,25 +45,29 @@ def setup():
     plt.rcParams['legend.fontsize']   = 15
 
     # Font
-    plt.rcParams['font.family'] = 'serif'
-    plt.rcParams['font.size']   = 17
+    plt.rcParams['font.family']    = 'serif'
+    plt.rcParams['font.size']      = 17
+    plt.rcParams['axes.titlesize'] = 17
 
+
+def latex():    
+    # Check if LaTeX is installed
+    if shutil.which('latex'):
+        plt.rcParams['text.usetex'] = True
+    else:
+        plt.rcParams['text.usetex'] = False 
     
         
-def latex():
+def setup_notebook(warning=True):
     setup()
-    plt.rcParams['text.usetex'] = True
+    latex()    
+    if not warning:
+        warnings.simplefilter("ignore")
 
-    
-    
-def setup_notebook():
+        
+def setup_paper(warning=True):
     setup()
     latex()
-
-    
-    
-def setup_paper():
-    setup()
-    latex()
-    plt.rcParams['legend.fontsize'] = 18
-    plt.rcParams['font.size']       = 20
+    plt.rcParams['legend.fontsize'] = 17
+    if not warning:
+        warnings.simplefilter("ignore")

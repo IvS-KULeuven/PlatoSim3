@@ -33,7 +33,7 @@ class TedFromFile(Test):
         readoutTime                                       = self.sim.getReadoutTime()[0]
         self.sim["ObservingParameters/NumExposures"]      = self.numExposures
         self.sim["Telescope/UseDrift"]                    = "yes"
-        self.sim["Telescope/UseDriftFromFile"]            = "yes"
+        self.sim["Telescope/DriftSource"]                 = "FromFile"
         self.sim["ControlHDF5Content/WriteStarPositions"] = "yes"
         self.sim["SubField/NumRows"]                      = 1000
         self.sim["SubField/NumColumns"]                   = 1000
@@ -149,7 +149,7 @@ class TedFromFile(Test):
 
         self.sim["ObservingParameters/NumExposures"]      = 50
         self.sim["Telescope/UseDrift"]                    = "yes"
-        self.sim["Telescope/UseDriftFromFile"]            = "yes"
+        self.sim["Telescope/DriftSource"]                 = "FromFile"
         self.sim["ControlHDF5Content/WriteStarPositions"] = "yes"
 
 
@@ -167,6 +167,10 @@ class TedFromFile(Test):
 
         simFile = self.sim.run(removeOutputFile = True)
         pos     = [simFile.getStarCoordinates(exp)[1:3] for exp in range(numEx-1)]
+
+        # Remove values for when no stars fall on the subfield
+        pos     = [(x, y) for x, y in pos if not ((x is None) and (y is None))]
+
         return zip(*pos)
 
 

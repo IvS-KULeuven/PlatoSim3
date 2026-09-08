@@ -11,5 +11,6 @@ In particular you may have to execute:
 $ conda install h5py
 $ conda install pyaml
 $ conda install scikit-image
+$ conda install termcolor
 
 

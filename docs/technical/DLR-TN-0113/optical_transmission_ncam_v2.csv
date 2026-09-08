@@ -1,0 +1,23 @@
+﻿# Optical Transmission for N-CAMs,,,,,,,,
+# Data partially from PTO-EST-PL-REP-0936 Table 3,,,,,,,,
+# column 1 wavelength in nm,,,,,,,,
+# column 2 impact of molecular contamination [see PTO-EST-PL-REP-0936],,,,,,,,
+# column 3 impact of particulate contamination [see PTO-EST-PL-REP-0936],,,,,,,,
+# column 4 optical transmission (without contamination) [see PTO-EST-PL-REP-0936],,,,,,,,
+# column 5 expected optical transmission [impact of molecular x impact of particulate x optical transmission],,,,,,,,
+# column 6 required optical transmission BOL (PL-SYS-263),,,,,,,,
+# column 7 required optical transmission EOL (PL-SYS-5198),,,,,,,,
+# column 8 as designed mission level PFM TOU transmission,,,,,,,,
+# column 9 as designed mission level transmission [impact of molecular x impact of particulate x as designed transmission],,,,,,,,
+wavelength,moc,pac,optical transmission,expected transmission,required bol transmission,required eol tranmission,as designed TOU optical transmission,as designed camera effective transmission
+500,0.88,0.98,0.8,0.69,0.658,0.634,0.87,0.750
+550,0.914,0.98,0.858,0.769,0.711,0.688,0.87,0.779
+600,0.953,0.98,0.875,0.817,0.747,0.727,0.87,0.813
+650,0.959,0.98,0.864,0.813,0.756,0.738,0.87,0.818
+700,0.969,0.98,0.874,0.829,0.771,0.755,0.87,0.826
+750,0.972,0.98,0.873,0.832,0.779,0.763,0.87,0.829
+800,0.974,0.98,0.883,0.843,0.785,0.77,0.87,0.830
+850,0.976,0.98,0.893,0.855,0.788,0.773,0.87,0.832
+900,0.978,0.98,0.893,0.856,0.791,0.776,0.87,0.834
+950,0.978,0.98,0.893,0.856,0.792,0.777,0.87,0.834
+1000,0.978,0.98,0.873,0.837,0.794,0.778,0.87,0.834

@@ -1,39 +1,61 @@
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
+"""
+Extract information from the PlatoSim HDF5 output file.
 
+This class provides a direct interface to extract and inspect
+the HDF5 output files that PlatoSim produce upon execution.
+
+For usage, see the Jupyter tutorial notebooks available at:
+"PlatoSim/docs/tutorials"
+"""
+
+# Built-in
 import os
-import numpy as np
-from platosim.fileSelect import fileMatch
+
+# PlatoSim standard
 import h5py
+import numpy as np
+from platosim.utilities import fileMatch
 
 
+#--------------------------------------------------------------#
+#                          FUNCTIONS                           #
+#--------------------------------------------------------------#
 
 
+def h5paths(item, verbose=True, includeGroups=True,
+            baseString="", flatList=None, classList=None):
 
-def h5paths(item, verbose=True, baseString="", flatList=None, classList=None, includeGroups=True):
+    """Function to extract HDF5 paths.
 
-    """
-    SYNOPSIS
-    h5paths(item, verbose=True, baseString="", flatList=None, classList=None, includeGroups=True)
+    Parameters
+    ----------
+    item : HDF5 file 
+        hdf5 file, or group from an hdf5 file
+    verbose : bool
+        If True, the attribue values are displayed on the output as well
+    includeGroups : bool
+        If False, only the final branches are returned -> to extract data
+        If True, all nodes are returned, including the groups -> to display the structure
+    baseString, flatList and classList: 
+       Private variables, and mustn't be used
 
-    INPUT
-    item     : hdf5 file, or group from an hdf5 file
-    verbose  : if True, the attribue values are displayed on the output as well
-    baseString, flatList and classList are private variables, and mustn't be used
-    includeGroups  : if False, only the final branches are returned         --> to extract data
-                     if True, all nodes are returned, including the groups  --> to display the structure
-
-    OUTPUT
-    Two lists are returned
-    1. includeGroups = False : the list of full paths towards all 'final' objects (datasets and attributes)
-       includeGroups = True  : the list of full paths, incl. intermediate nodes (groups)
-    2. The list of object type, indicated by the following string-codes: 
-        'a' : attribute  (i.e. appearing below a h5py._hl.attrs.AttributeManager)
-        'd' : dataset    (i.e. h5py._hl.dataset.Dataset)
+    Returns
+    -------
+    Two lists are returned:
+        1. If includeGroups = False : 
+           the list of full paths towards all 'final' objects (datasets and attributes)
+           If includeGroups = True : 
+           the list of full paths, incl. intermediate nodes (groups)
+        2. The list of object type, indicated by the following string-codes: 
+          'a' : attribute  (i.e. appearing below a h5py._hl.attrs.AttributeManager)
+          'd' : dataset    (i.e. h5py._hl.dataset.Dataset)
     
-    EXAMPLE
-    paths, classes = h5paths(hfile)
-    
+    Example
+    -------
+    >>> paths, classes = h5paths(hfile)
     """
 
     # FORCE-INITIALISE THE LISTS ON FIRST CALL (without touching h5paths.__defaults__)
@@ -57,7 +79,11 @@ def h5paths(item, verbose=True, baseString="", flatList=None, classList=None, in
             if includeGroups:
                 flatList += [str(baseString+'/'+ str(i[0]))]
                 classList += ['g']
-            flatList,classList = h5paths(i[1], verbose=verbose,baseString=baseString+'/'+i[0],flatList=flatList,classList=classList,includeGroups=includeGroups)
+            flatList, classList = h5paths(i[1], verbose=verbose,
+                                          baseString=baseString + '/' + i[0],
+                                          flatList=flatList,
+                                          classList=classList,
+                                          includeGroups=includeGroups)
         elif(isinstance(i[1],h5py._hl.dataset.Dataset)):
             if verbose: print("[D] " + baseString + '/' + str(i[0]))
             flatList += [str(baseString+'/'+ str(i[0]))]
@@ -70,58 +96,50 @@ def h5paths(item, verbose=True, baseString="", flatList=None, classList=None, in
 
 
 
-
-
-
-
-
-
-def h5get(item,sel,verbose=True,caseSensitive=False,getNames=False,cs=False):
+def h5get(item, sel,verbose=True, caseSensitive=False, getNames=False, cs=False):
     
-    """
-    SYNOPSIS
-    h5get(item,sel,verbose=True,caseSensitive=False,getNames=False,cs=False)
+    """Function to fetch data within HDF5 file.
 
-    INPUT
-    item     : hdf5 file, or group from an hdf5 file
-    sel      : string, or list of strings
-               . all must be present within the target product name
-               . the order is not important
-    verbose  : if True, the name and nature of the result are displayed. Nature is on of attribute, dataset or group
-    caseSensitive and cs : by default, the search is not case sensitive,
-                           but this can be forced via either 'cs' or 'caseSensitive'
-    getNames : if True, a second output variable is provided, with the names (full paths) to the matching objects
+    Parameters
+    ----------
+    item : file
+        HDF5 file or group from an HDF5 file
+    sel : str
+        String or list of strings
+        -> all must be present within the target product name
+        -> the order is not important
+    verbose : bool
+        If True, the name and nature of the result are displayed. 
+        Nature is on of attribute, dataset or group
+    caseSensitive and cs : bool
+        By default, the search is not case sensitive, but this can be forced via 
+        either 'cs' or 'caseSensitive'
+    getNames : bool
+        If True, a second output variable is provided, with the names (full paths) 
+        to the matching objects
 
-    OUTPUT
-    All datasets and attributes where all strings in 'sel' are present in the path will be returned
-    Groups have not direct content, and are hence ignored
-    By path, we mean the full path below the input "item" ("item" may not be the root of the hdf5 file)
+    Returns
+    -------
+    All datasets and attributes where all strings in 'sel' are present in the
+    path will be returned Groups have not direct content, and are hence ignored
+    By path, we mean the full path below the input "item" ("item" may not be the
+    root of the hdf5 file).
 
     If one result is found, it is returned as a single variable
     If multiple results are found, they are returned in a list
     
-    EXAMPLES
-    
+    Examples
+    --------
     >>> import h5py
     >>> hfile = h5py.File("myfile.hdf5", 'r')
+
+    Example 1:
+    >>> bias = h5get(hfile, ["bias", "27"])  # Method 1
+    >>> bias = h5get(hfile, ["27", "Bias"])  # Method 2
     
-    >>> bias = h5get(hfile,["bias","27"])
-    OR    
-    >>> bias = h5get(hfile,["27","Bias"])
-        matching items:
-            Dataset         /BiasMaps/biasMap000027
-        bias.__class__  : numpy.ndarray
-        bias.shape      : (5, 100)
-
-
-    >>> versions        = h5get(hfile,"Version")  
-    OR
-    >>> versions, names = h5get(hfile,"version",getNames=1)  
-        matching items:
-            Attribute       /Version/Application
-            Attribute       /Version/GitVersion
-        versions        :  ['PlatoSim3', '3.1.0-460-g39cef00']
-        names           :  ['/Version/Application', '/Version/GitVersion']
+    Example 2:
+    >>> versions        = h5get(hfile,"Version")               # Method 1
+    >>> versions, names = h5get(hfile, "version", getNames=1)  # Method 2
     """
 
     if not isinstance(sel,list): 
@@ -187,9 +205,10 @@ def h5get(item,sel,verbose=True,caseSensitive=False,getNames=False,cs=False):
             result.append(np.array(item[obj]))
         else:
             if verbose:
-                print("Object {0}, is of type {1} and doesn't directly contain data".format(obj,obj.__class__))
+                print(f"Object {obj}, is of type {obj.__class__} " +
+                      "and doesn't directly contain data")
     
-    # OUTPUT
+    # That's it!
 
     if getNames:
         if len(matchingItems)==1:
@@ -202,31 +221,48 @@ def h5get(item,sel,verbose=True,caseSensitive=False,getNames=False,cs=False):
         else:
             return result
 
- 
-def h5ls(item, sel="",summary=True, s="",indent=" "*4,verbose=True,keepDeeper=False, baseString="",fullPath=False,fp=False):
-    """
-    SYNOPSIS
-    h5ls(item, sel="",summary=True, s="",indent=" "*4,verbose=True,keepDeeper=False)
 
-    INPUT
-    item     : hdf5 file instance, or group in a hdf5 file
-    sel      : string (empty by default). If specified, only the items matching this string are printed
-    summary  : by default, 3+ consecutive objects starting with the same 2 
-               characters will not all be displayed. We only display the first 2 and the last.
-               summary=False forces an exhaustive display of all items
-    s        : base string, prepended to any output. This variable is primarily used in the internal recursion
-    indent   : incremental indentation for any sub-level in the structure
-    verbose  : if True, the attribue values are displayed on the output as well
-    keepDeeper : private variable used in the recursion. Must be False.
-    fullPath or fp [synomymous] : if at least one is True, the full path is displayed instead of just the item name
-    baseString : private variable used in the recursion when full=True. Must be left empty.
 
-    OUTPUT
-    Recursively prints the structure of an hdf5 file,or a group from an hdf5 file
+
+        
+def h5ls(item, sel="", s="", indent=" "*4, verbose=True, summary=True,
+         fullPath=False, fp=False, keepDeeper=False, baseString=""):
+
+    """Function to display entries within HDF5 file.
+
+    Parameters
+    ----------
+    item : file
+        HDF5 file instance, or group in a HDF5 file
+    sel : str
+        If specified, only the items matching this string are printed
+    s : str
+        Base string, prepended to any output. This variable is primarily used 
+        in the internal recursion
+    indent : str
+        Incremental indentation for any sub-level in the structure
+    verbose : bool
+        If True, the attribue values are displayed on the output as well
+    summary : bool
+        By default, 3+ consecutive objects starting with the same 2 characters
+        will not all be displayed. We only display the first 2 and the last.
+        If summary=False forces an exhaustive display of all items
+    fullPath or fp [synomymous] : bool
+        If at least one is True, the full path is displayed instead of just the item name.
+    keepDeeper : bool
+        Private variable used in the recursion. Must be False.
+    baseString : str
+        Private variable used in the recursion when full=True. Must be left empty.
+
+    Returns
+    -------
+    Recursively prints the structure of an hdf5 file, or a group from an hdf5 file.
     If verbose=True (default), the attribute values are displayed as well
-    [G], [D] or [a] is prepended to each line wrt the nature of the item : group, dataset or attribute
+    [G], [D] or [a] is prepended to each line w.r.t. the nature of the item: 
+    group, dataset or attribute.
     
-    EXAMPLES
+    Examples
+    --------
     >>> import h5py
     >>> import h5.py
     >>> file = h5py.File("myFile.hdf5", "r")
@@ -251,7 +287,8 @@ def h5ls(item, sel="",summary=True, s="",indent=" "*4,verbose=True,keepDeeper=Fa
             maxlength = max([len(k) for k in groupkeys])
             if verbose:
               for key in groupkeys:
-                print("[a] " + s + baseString+'/'+"{0}".format(key).rjust(maxlength), indent, item.attrs[key])
+                print("[a] " + s + baseString + '/' +
+                      "{0}".format(key).rjust(maxlength), indent, item.attrs[key])
             else:
               for key in groupkeys:
                 print(s + baseString+key)
@@ -259,8 +296,10 @@ def h5ls(item, sel="",summary=True, s="",indent=" "*4,verbose=True,keepDeeper=Fa
             pass
     
     # SUMMARIZE THE OUTPUT FOR GROUPS OF GROUPS BEARING SIMILAR NAMES
-    # IF AT LEAST 3 CONSECUTIVE GROUP NAMES START BY THE SAME 'charEqual' CHARACTERS, ONLY DISPLAY THE FIRST TWO AND THE LAST
-    # ref1 & ref2 keep the first characters of the last 2 items at the current level in the tree
+    # IF AT LEAST 3 CONSECUTIVE GROUP NAMES START BY THE SAME 'charEqual'
+    # CHARACTERS, ONLY DISPLAY THE FIRST TWO AND THE LAST
+    # ref1 & ref2 keep the first characters of the last 2 items at the
+    # current level in the tree
     
     ref2,ref1 = None,None
     
@@ -301,25 +340,34 @@ def h5ls(item, sel="",summary=True, s="",indent=" "*4,verbose=True,keepDeeper=Fa
         if i[0].lower().find(sel)>=0: 
             keepDeeper = True
         elif not flag:
-            # This node doesn't match the selection, and superior nodes also not => non-matching sub-levels shouldn't be kept
+            # This node doesn't match the selection, and superior nodes also not
+            # => non-matching sub-levels shouldn't be kept
             keepDeeper = False
 
-        # No selection requested, or matching selection, or matching identified at higher level 
-        # => display unless this item is similar to the previous ones already displayed 
-        # in which case we may not display it at all (keep=False) 
-        # or mark that we are entering "summary mode" (shortenHere=True)
+        # No selection requested, or matching selection, or matching identified
+        # at higher level => display unless this item is similar to the previous
+        # ones already displayed in which case we may not display it at all
+        # (keep=False) or mark that we are entering "summary mode" (shortenHere=True)
         
         if not sel or (sel and ((i[0].lower().find(sel)>=0) or keepDeeper)):
             if keep: 
-                print({h5py._hl.group.Group:"[G] ",h5py._hl.dataset.Dataset:"[D] "}[i[1].__class__] + s + baseString+'/'+i[0])
+                print({h5py._hl.group.Group:"[G] ",
+                       h5py._hl.dataset.Dataset:"[D] "}[i[1].__class__] +
+                      s + baseString+'/'+i[0])
             elif shortenHere:
                 print("    " + s + "...")
     
-        # If this node is a group => recurse on lower level (unless it's skipped due to 'summary')
+        # If this node is a group => recurse on lower level
+        # (unless it's skipped due to 'summary')
         
         if isinstance(i[1], h5py._hl.group.Group) and keep:
             if fullPath or fp:
-                h5ls(i[1], sel=sel, summary=summary, s=s+indent, verbose=verbose, keepDeeper=keepDeeper,fullPath=True,baseString=baseString+'/'+i[0])
+                h5ls(i[1], sel=sel, summary=summary, s=s+indent, verbose=verbose,
+                     keepDeeper=keepDeeper,fullPath=True,baseString=baseString+'/'+i[0])
             else:
-                h5ls(i[1], sel=sel, summary=summary, s=s+indent, verbose=verbose, keepDeeper=keepDeeper,fullPath=False,baseString=baseString)
+                h5ls(i[1], sel=sel, summary=summary, s=s+indent, verbose=verbose,
+                     keepDeeper=keepDeeper,fullPath=False,baseString=baseString)
+
+    # That's it!
+    
     return

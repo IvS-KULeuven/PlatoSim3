@@ -30,8 +30,6 @@ class MolecularContamination(Test):
         self.sim["SubField/NumRows"]    = 2000
         self.sim["SubField/NumColumns"] = 2000
 
-        self.sim["ObservingParameters/DecPointing"] = - self.sim["ObservingParameters/DecPointing"]
-
 
         
 

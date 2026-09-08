@@ -29,7 +29,7 @@ class SimpleCTI(Test):
         self.sim["SubField/NumColumns"] = 1
 
         # Make sure no stars fall onto the subfield. 
-        self.sim["ObservingParameters/DecPointing"] = - self.sim["ObservingParameters/DecPointing"]
+        self.sim["Platform/Orientation/Angles/DecPointing"] = -self.sim["Platform/Orientation/Angles/DecPointing"]
         # Include Simple CTI effects
         self.sim["CCD/IncludeCTIeffects"] = "yes"
         self.sim["CCD/CTI/Model"] = "Simple"

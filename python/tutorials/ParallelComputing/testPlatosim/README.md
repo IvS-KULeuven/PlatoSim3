@@ -1,1 +1,0 @@
-This is the simplest test of running PlatoSim3 on the HPC using any of Genius's clusters. The job scripts provided here were used to test "how to run" PlatoSim3 directly from bash or using a very simplistic python script.

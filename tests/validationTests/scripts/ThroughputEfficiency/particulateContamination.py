@@ -33,7 +33,7 @@ class ParticulateContamination(Test):
         self.sim["SubField/NumRows"]    = 2000
         self.sim["SubField/NumColumns"] = 2000
 
-        self.sim["ObservingParameters/DecPointing"] = - self.sim["ObservingParameters/DecPointing"]
+        self.sim["Platform/Orientation/Angles/DecPointing"] = - self.sim["Platform/Orientation/Angles/DecPointing"]
 
 
         
@@ -67,3 +67,4 @@ class ParticulateContamination(Test):
 if __name__ == "__main__":
     t = ParticulateContamination()
     print(t.run())
+

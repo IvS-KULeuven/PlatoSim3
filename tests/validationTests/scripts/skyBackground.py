@@ -1,5 +1,6 @@
 import platosim.referenceFrames as rf
 import numpy                    as np
+import os
 
 from math import degrees
 from test import Test
@@ -30,27 +31,17 @@ class SkyBackGround(Test):
         super().setAllEffects()
         self.sim["ObservingParameters/NumExposures"] = 1
 
-        # Create a sky map
-        nRow     = self.sim["SubField/NumRows"]
-        nCol     = self.sim["SubField/NumColumns"]
-        row, col = nRow / 2, nCol / 2
-
-
-        ra, dec = rf.pixelToSkyCoordinates(self.sim, "2", row, col)
-
-        ra  = degrees(ra)
-        dec = degrees(dec)
-
         starCatalogFilename = self.outputDir + "/starCatalog"+ self.nr + ".txt"
-        myFile = open(starCatalogFilename, "w")
-        myFile.write("# RA DEC Vmag starID\n")
-        myFile.write("{0}  {1}  {2}  {3}\n".format(ra, dec, 16.5, 1))
-        myFile.close()
+        # Create an empty sky map
+        if os.path.isfile(starCatalogFilename):
+            os.remove(starCatalogFilename)
 
-        self.sim["ObservingParameters/StarCatalogFile"] = starCatalogFilename
+        self.sim.createStarCatalogFile(np.array([]), np.array([]), np.array([]), np.array([]), starCatalogFilename)
+
 
         # Make sure no star does not fall in the sub field.
         self.sim["CCD/Position"] = "3"
+
 
 
 
@@ -61,7 +52,7 @@ class SkyBackGround(Test):
 
 
         exposureTime = self.sim["ObservingParameters/CycleTime"] - self.sim.getReadoutTime()[0]
-        theoBackground = self.sim["Sky/SkyBackground"] * exposureTime * self.sim["Telescope/TransmissionEfficiency/BOL"]
+        theoBackground = self.sim["Sky/SkyBackground/BackgroundValue"] * exposureTime * self.sim["Telescope/TransmissionEfficiency/BOL"]
 
         difference = image - int(theoBackground)
         RMS = np.sqrt(np.sum(difference*difference) / len(difference))

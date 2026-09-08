@@ -56,9 +56,18 @@ Simulation::Simulation(string inputFilename, string outputFilename)
 
         Log.info("Simulation: create a connected detector factory instance");
 
-        // create a specific empty hdf5 output file
-
-        hdf5File = new ClosedLoopHDF5File();
+        // In the closed-loop case, data is sent over the network and normally not stored locally
+        if (configParams.nodeExists("ControlHDF5Content/GenerateRealHdf5") && 
+                configParams.getBoolean("ControlHDF5Content/GenerateRealHdf5"))
+        {
+            // create a regular HDF5 file only if configured to do so
+            hdf5File = new HDF5File();
+        } 
+        else
+        {
+            // create a specific empty hdf5 output file otherwise
+            hdf5File = new ClosedLoopHDF5File();
+        }
 
     }
     else
@@ -68,8 +77,6 @@ Simulation::Simulation(string inputFilename, string outputFilename)
         hdf5File = new HDF5File();
     }
 
-
-
     // Open the HDF5 output file where the images will be written
 
     hdf5File->open(outputFilename);
@@ -78,19 +85,19 @@ Simulation::Simulation(string inputFilename, string outputFilename)
 
     hdf5File->writeVersionInformation();
 
-
+    // Acquisition times
+    
     double readoutTimeDuringNextExposure;
     tie(readoutTimeBeforeNextExposure, readoutTimeDuringNextExposure) = configureReadoutTime(configParams);
     exposureTime = cycleTime - readoutTimeBeforeNextExposure;
     if (cycleTime < readoutTimeBeforeNextExposure)
       {
-	Log.warning("Simulation: exposure time is negative value: " + to_string(exposureTime));	
+	Log.warning("Simulation: exposure time is negative value: " + to_string(exposureTime));
       }
 
     Log.debug("Simulation: Cycle time: " + to_string(cycleTime));
     Log.debug("Simulation: Exposure time: " + to_string(exposureTime));
     Log.debug("Simulation: Readout time before next exposure: " + to_string(readoutTimeBeforeNextExposure));
-
 
     // Depending on what the user requested, define the proper platform jitter generator
 
@@ -115,9 +122,9 @@ Simulation::Simulation(string inputFilename, string outputFilename)
         else
         {
             string errorMessage = "Simulation: Jitter Source '" + jitterSource + "' is not supported.";
-            
+
             Log.error(errorMessage);
-            
+
             throw IllegalArgumentException(errorMessage);
         }
 
@@ -131,16 +138,22 @@ Simulation::Simulation(string inputFilename, string outputFilename)
     }
     else
     {
-        if (useDriftFromFile)
+        if (driftSource == "FromFile")
         {
             driftGenerator = new ThermoElasticDriftFromFile(configParams);
         }
-        else
+        else if (driftSource == "FromRedNoise")
         {
             driftGenerator = new ThermoElasticDriftFromRedNoise(configParams);
         }
+	else
+        {
+            string errorMessage = "Simulation: Drift Source '" + driftSource + "' is not supported.";
+            Log.error(errorMessage);
+            throw IllegalArgumentException(errorMessage);
+        }
     }
-    
+
 
     if(useFeeTemperatureFromFile)
     {
@@ -192,6 +205,7 @@ Simulation::Simulation(string inputFilename, string outputFilename)
     // Write the input parameters to the output HDF5 file
 
     writeInputParametersToHDF5(configParams);
+
 }
 
 
@@ -231,20 +245,20 @@ Simulation::~Simulation()
 
 /**
  * \brief Configure the Simulation object using the input parameter file
- * 
+ *
  * \param configParams  Contains all configuration parameters from the input file
  */
 
 void Simulation::configure(ConfigurationParameters &configParams)
 {
-    cycleTime                       = configParams.getDouble("ObservingParameters/CycleTime"); 
+    cycleTime                       = configParams.getDouble("ObservingParameters/CycleTime");
     beginExposureNr                 = configParams.getInteger("ObservingParameters/BeginExposureNr");
     numExposures                    = configParams.getInteger("ObservingParameters/NumExposures");
     useJitter                       = configParams.getBoolean("Platform/UseJitter");
     jitterSource                    = configParams.getString("Platform/JitterSource");
-    includeFieldDistortion          = configParams.getBoolean("Camera/IncludeFieldDistortion"); // do we want to do this or should this be asked to Camera?
-    useDrift                        = configParams.getBoolean("Telescope/UseDrift");  
-    useDriftFromFile                = configParams.getBoolean("Telescope/UseDriftFromFile");  
+    includeFieldDistortion          = configParams.getBoolean("Camera/IncludeFieldDistortion");     // TODO do we want to do this or should this be asked to Camera?
+    useDrift                        = configParams.getBoolean("Telescope/UseDrift");
+    driftSource                     = configParams.getString("Telescope/DriftSource");
     psfModel                        = configParams.getString("PSF/Model");
     useFeeTemperatureFromFile       = configParams.getString("FEE/Temperature") == "FromFile";
     useFeeNominalTemperature        = configParams.getString("FEE/Temperature") == "Nominal";
@@ -252,7 +266,7 @@ void Simulation::configure(ConfigurationParameters &configParams)
     useDetectorNominalTemperature   = configParams.getString("CCD/Temperature") == "Nominal";
     sendImagettesToClient           = configParams.getBoolean("ControlTcpConnection/SendImagettesToClients");
     getWindowPositionFromServer     = configParams.getBoolean("ControlTcpConnection/GetWindowPositionsFromServer");
-    writeStarCatalog                = configParams.getBoolean("ControlHDF5Content/WriteStarCatalog");                
+    writeStarCatalog                = configParams.getBoolean("ControlHDF5Content/WriteStarCatalog");
 
     // The readout of different CCDs are shifted in time because of the power budget.
     // Find out the right time shift.
@@ -287,13 +301,13 @@ void Simulation::configure(ConfigurationParameters &configParams)
  *        depending on the camera type (normal / fast) and the readout mode
  *        (nominal / partial readout).
  *
- * For the normal cameras the entire CCD is read out (with open shutter) after 
- * the exposure during a time interval called 'readoutTimeBeforeNextExposure'. 
+ * For the normal cameras the entire CCD is read out (with open shutter) after
+ * the exposure during a time interval called 'readoutTimeBeforeNextExposure'.
  * Only after this readout, a new exposure is started.
- * For the fast camera, half of the CCD is first quickly frame-transferred, 
+ * For the fast camera, half of the CCD is first quickly frame-transferred,
  * after which it is read out slowly. In this case a new exposure is already
- * started after the quick frame-transfer, and starts thus during the slow readout 
- * of the previous exposure. 
+ * started after the quick frame-transfer, and starts thus during the slow readout
+ * of the previous exposure.
  * Hence the need for two parameters 'readoutTimeBeforeNextExposure' and
  * 'readoutTimeDuringNextExposure'.
  *
@@ -341,28 +355,26 @@ pair<double, double> Simulation::configureReadoutTime(ConfigurationParameters &c
                 throw ConfigurationException("Simulation: Unknown readout mode specification in configuration file");
         }
 
-        double serialTransferTime = configParams.getDouble("CCD/SerialTransferTime") * 1E-9;			  // [ns] -> [s]
-        double parallelTransferTime = configParams.getDouble("CCD/ParallelTransferTime") * 1E-6;		  // [µs] -> [s]
+        double serialTransferTime = configParams.getDouble("CCD/SerialTransferTime") * 1E-9;		  // [ns] -> [s]
+        double parallelTransferTime = configParams.getDouble("CCD/ParallelTransferTime") * 1E-6;	  // [µs] -> [s]
         double parallelTransferTimeFast = configParams.getDouble("CCD/ParallelTransferTimeFast") * 1E-6;  // [µs] -> [s]
 
 
-
-    int numColumnsBiasMap =  configParams.getInteger("SubField/NumBiasPrescanColumns");     // [pixels]
-    int numRowsSmearingMap = configParams.getInteger("SubField/NumSmearingOverscanRows");   // [pixels]
-
+	int numColumnsBiasMap =  configParams.getInteger("SubField/NumBiasPrescanColumns");     // [pixels]
+	int numBiasPrescanRows = configParams.getInteger("SubField/NumBiasPrescanRows");        // [pixels]
+	int numBiasPrescanColumns = configParams.getInteger("SubField/NumBiasPrescanColumns");  // [pixels]
+	int numRowsSmearingMap = configParams.getInteger("SubField/NumSmearingOverscanRows");   // [pixels]
 
 
         double readoutTimeBeforeNextExposure, readoutTimeDuringNextExposure;
-
-
 
         // Both detector halves are read out simultaneously
         // -> columns read out by the FEE:
         //              - half of the CCD
         //              - serial pre-scan
-        //              - (serial over-scan)
+        //              - Parallel pre-scan
 
-        int numColumnsReadout = numColumns / 2 + numColumnsBiasMap; // + numRowsSerialOverScan
+        int numColumnsReadout = numColumns / 2 + numColumnsBiasMap + numBiasPrescanColumns;
 
         // How many rows will be actually read out by the FEE?
         //      - nominal mode: image area + parallel over-scan
@@ -521,6 +533,14 @@ void Simulation::run()
 
 
 
+
+
+
+
+
+
+
+
 /**
  * \brief      Write information about the stars that were detected in the subField
  *             to the HDF5 output file.
@@ -582,13 +602,13 @@ void Simulation::writeStarCatalogToHDF5()
             k++;
         }
         hdf5File->writeArray("StarCatalog/", "starIDs", starIDs.data(), starIDs.size());
-        hdf5File->writeArray("StarCatalog/", "RA",      RA.data(), RA.size());
-        hdf5File->writeArray("StarCatalog/", "Dec",     dec.data(), dec.size());
-        hdf5File->writeArray("StarCatalog/", "Vmag",    Vmag.data(), Vmag.size());
-        hdf5File->writeArray("StarCatalog/", "xFPmm",    xFPmm.data(), xFPmm.size());
-        hdf5File->writeArray("StarCatalog/", "yFPmm",    yFPmm.data(), yFPmm.size());
-        hdf5File->writeArray("StarCatalog/", "colPix",    colPix.data(), colPix.size());
-        hdf5File->writeArray("StarCatalog/", "rowPix",    rowPix.data(), rowPix.size());
+        hdf5File->writeArray("StarCatalog/", "RA",      RA.data(),      RA.size());
+        hdf5File->writeArray("StarCatalog/", "Dec",     dec.data(),     dec.size());
+        hdf5File->writeArray("StarCatalog/", "Vmag",    Vmag.data(),    Vmag.size());
+        hdf5File->writeArray("StarCatalog/", "xFPmm",   xFPmm.data(),   xFPmm.size());
+        hdf5File->writeArray("StarCatalog/", "yFPmm",   yFPmm.data(),   yFPmm.size());
+        hdf5File->writeArray("StarCatalog/", "colPix",  colPix.data(),  colPix.size());
+        hdf5File->writeArray("StarCatalog/", "rowPix",  rowPix.data(),  rowPix.size());
     }
     else
     {
@@ -669,19 +689,20 @@ void Simulation::writeInputParametersToHDF5(ConfigurationParameters &configParam
     addInteger("NumExposures");
     addInteger("BeginExposureNr");
     addDouble("CycleTime");
-    addDouble("RApointing");
-    addDouble("DecPointing");
     addDouble("Fluxm0");
     addString("StarCatalogFile");
 
     subGroup = "Sky";
     hdf5File->createGroup(parentGroup + "/" + subGroup);
-    addDouble("SkyBackground");
     addBoolean("IncludeVariableSources");
     addString("VariableSourceList");
     addBoolean("IncludeCosmicsInSubField");
     addBoolean("IncludeCosmicsInSmearingMap");
     addBoolean("IncludeCosmicsInBiasMap");
+    subGroup = "Sky/SkyBackground";
+    hdf5File->createGroup(parentGroup + "/" + subGroup);
+    addBoolean("UseConstantSkyBackground");
+    addDouble("BackgroundValue");
     subGroup = "Sky/Cosmics";
     hdf5File->createGroup(parentGroup + "/" + subGroup);
     addDouble("CosmicHitRate");
@@ -690,7 +711,6 @@ void Simulation::writeInputParametersToHDF5(ConfigurationParameters &configParam
 
     subGroup = "Platform";
     hdf5File->createGroup(parentGroup + "/" + subGroup);
-    addDouble("SolarPanelOrientation");
     addBoolean("UseJitter");
     addString("JitterSource");
     addDouble("JitterYawRms");
@@ -698,6 +718,18 @@ void Simulation::writeInputParametersToHDF5(ConfigurationParameters &configParam
     addDouble("JitterRollRms");
     addDouble("JitterTimeScale");
     addString("JitterFileName");
+    subGroup = "Platform/Orientation";
+    hdf5File->createGroup(parentGroup + "/" + subGroup);
+    addString("Source");
+    subGroup = "Platform/Orientation/Angles";
+    hdf5File->createGroup(parentGroup + "/" + subGroup);
+    addDouble("RAPointing");
+    addDouble("DecPointing");
+    addDouble("SolarPanelOrientation");
+    subGroup = "Platform/Orientation/Quaternion";
+    hdf5File->createGroup(parentGroup + "/" + subGroup);
+    addDoubleVector("Components");
+
 
     subGroup = "Telescope";
     hdf5File->createGroup(parentGroup + "/" + subGroup);
@@ -706,7 +738,7 @@ void Simulation::writeInputParametersToHDF5(ConfigurationParameters &configParam
     addDouble("TiltAngle");
     addDouble("LightCollectingArea");
     addBoolean("UseDrift");
-    addBoolean("UseDriftFromFile");
+    addString("DriftSource");
     addDouble("DriftYawRms");
     addDouble("DriftPitchRms");
     addDouble("DriftRollRms");
@@ -827,7 +859,6 @@ void Simulation::writeInputParametersToHDF5(ConfigurationParameters &configParam
     addDouble("SerialTransferTime");
     addDouble("ParallelTransferTime");
     addDouble("ParallelTransferTimeFast");
-    addDouble("FlatfieldNoiseRMS");
     addDouble("NominalOperatingTemperature");
     addString("Temperature");
     addString("TemperatureFileName");
@@ -848,6 +879,16 @@ void Simulation::writeInputParametersToHDF5(ConfigurationParameters &configParam
     addBoolean("IncludeFullWellSaturation");
     addBoolean("IncludeDigitalSaturation");
     addBoolean("IncludeQuantisation");
+    addBoolean("IncludeGainNonlinearity");
+    subGroup = "CCD/Flatfield";
+    hdf5File->createGroup(parentGroup + "/" + subGroup);
+    addString("Source");
+    subGroup = "CCD/Flatfield/FromFile";
+    hdf5File->createGroup(parentGroup + "/" + subGroup);
+    addString("FilePath");
+    subGroup = "CCD/Flatfield/FromRedNoise";
+    hdf5File->createGroup(parentGroup + "/" + subGroup);
+    addString("FlatfieldNoiseRMS");
     subGroup = "CCD/BFE";
     hdf5File->createGroup(parentGroup + "/" + subGroup);
     addString("CoefficientsFileName");
@@ -857,6 +898,7 @@ void Simulation::writeInputParametersToHDF5(ConfigurationParameters &configParam
     addDouble("RefValueRight");
     addDouble("Stability");
     addDouble("AllowedDifference");
+    addDoubleVector("Nonlinearity");
     subGroup = "CCD/QuantumEfficiency";
     hdf5File->createGroup(parentGroup + "/" + subGroup);
     addDouble("MeanQuantumEfficiency");
@@ -993,7 +1035,7 @@ void Simulation::writeInputParametersToHDF5(ConfigurationParameters &configParam
  * @brief Set the random seeds of the simulation.
  *
  * If the user set a random seed to -1, use the system's clock to set it. This is useful
- * to simulate time series that were partitioned in several segments, so that each 
+ * to simulate time series that were partitioned in several segments, so that each
  * segment has a different random seed.
  *
  * @param configParams

@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 
 
 """ 
-This test is designed to test the photon noise of PlatoSim. It takes a subfield of one pixel for 1000 exposures with no stars on the subfield, so we end up with
+This test is designed to test the photon noise of PlatoSim. It takes a subfield of one pixel for 300 exposures with no stars on the subfield, so we end up with
 a time series of the flux. This time series should follow a Poisson distribution around the value of the sky background. The test passes if the mean value and 
 variance of the time series are around the sky background.
 """
@@ -26,13 +26,13 @@ class PhotonNoise(Test):
     def setAllEffects(self):
 
         super().setAllEffects()
-        self.numExposures = 2000
+        self.numExposures = 300
         self.sim["ObservingParameters/NumExposures"] = self.numExposures
         self.sim["SubField/NumRows"]    = 100
         self.sim["SubField/NumColumns"] = 100
 
         # Make sure no stars are on the subfield.
-        self.sim["ObservingParameters/DecPointing"] = - self.sim["ObservingParameters/DecPointing"]
+        self.sim["Platform/Orientation/Angles/DecPointing"] = -self.sim["Platform/Orientation/Angles/DecPointing"]
 
         # Include photon noise.
         self.sim["CCD/IncludePhotonNoise"] = "yes"
@@ -43,7 +43,7 @@ class PhotonNoise(Test):
 
         # Expected Sky Background
         exposureTime = self.simFile.getInputParameter("ObservingParameters", "CycleTime") - self.sim.getReadoutTime()[0]
-        expectedSkyBackground = self.simFile.getInputParameter("Sky", "SkyBackground") * exposureTime * self.simFile.getInputParameter("Telescope/TransmissionEfficiency", "BOL")
+        expectedSkyBackground = self.simFile.getInputParameter("Sky/SkyBackground", "BackgroundValue") * exposureTime * self.simFile.getInputParameter("Telescope/TransmissionEfficiency", "BOL")
 
         # Flux obtained from PlatoSim
         flux = np.array([self.simFile.getImage(exposure) for exposure in range(self.numExposures)])

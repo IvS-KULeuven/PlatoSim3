@@ -1,65 +1,82 @@
-# PlatoSim3 configuration file
+# PlatoSim3 configuration file for the N-CAM and "as required" BOL performance.
+# To change the performance and usage of F-CAMs we recommend using our Python interface:
+# N-CAM : simulation.useNormalCamera(performance=False, timeFromBOL=0)
+# N-CAMb: simulation.useFastCamera(passband="blue", performance=False, timeFromBOL=0)
+# N-CAMr: simulation.useFastCamera(passband="red",  performance=False, timeFromBOL=0)
+# We provide a NOTE for parameters that are different F-CAMs. 
 ---
 
 General:
 
     ProjectLocation:                 ENV['PLATO_PROJECT_HOME']
 
-
+    
 ObservingParameters:
 
-    MissionDuration:                 6.5             # Total duration of the mission [yr], relevant for BOL->EOL degradation
+    MissionDuration:                 4.5             # Total duration of the mission [yr], relevant for BOL->EOL degradation
     NumExposures:                    10              # Number of exposures
-    BeginExposureNr:                 0               # Sequential number of first exposure. useful for slurm parallellisation
+    BeginExposureNr:                 0               # Sequential number of first exposure (useful for slurm parallellisation)
     CycleTime:                       25              # Image cycle time (exposure + readout before next exposure starts)[s]
-    RApointing:                      86.8            # Platform (not telescope) right ascension pointing coordinate     [deg]
-    DecPointing:                     -46.4           # Platform (not telescope) declination pointing coordinate         [deg]
-    Fluxm0:                          1.00179e8       # Photon flux of a V=0 G2V-star                                    [phot/s/m^2/nm]
+    Fluxm0:                          1.00179e8       # Photon flux of a P=0 G2V-star [phot/s/m^2/nm]. NOTE Different for F-CAMs
     StarCatalogFile:                 inputfiles/starcatalog.txt
 
+    
 Sky:
 
-    SkyBackground:                   342.            # Stellar + zodiacal background level (excl. transmission efficiency). Set negative to compute. [phot/pix/s]
+    SkyBackground:                                   # Sky background (Built-in Zodiacal + Galactic, excl. transmission efficiency)
+      UseConstantSkyBackground:      yes             # If true, every pixel sees the same background, otherwise the background gets calculated ones for every pixel
+      BackgroundValue:               -1              # Sky background value. Set negative to compute. [phot/pix/s]. NOTE Dependent on central passband wavelength 
     IncludeVariableSources:          no              # Include time series of variable stars or not
     VariableSourceList:              inputfiles/varsource.txt  # Ascii file: Col 1: star ID, Col 2: path of time series file
     IncludeCosmicsInSubField:        yes             # Whether or not to include cosmics in the subfield on the CCD
     IncludeCosmicsInSmearingMap:     yes             # Whether or not to include cosmics in the overscan map
     IncludeCosmicsInBiasMap:         yes             # Whether or not to include cosmics in the prescan map
     Cosmics:
-      CosmicHitRate:                 1000            # Cosmic hit rate [events / cm^2 / s]
+      CosmicHitRate:                 10              # Cosmic hit rate [events / cm^2 / s]
       TrailLength:                   [0, 15]         # Boundaries of uniform distribution for the length of the cosmic trails [pixels]
       Intensity:                     [2500., 2000., 30.] # Location, scale>0, and shape of the skew-Normal distribution for the total number of e- in a cosmic hit [e-]
+    StrayLight:
+      IncludeStrayLight:             no              # Include stray light [yes, no]
+      FilePath:                      inputfiles/Plato_straylight_example_index_2574.csv
+      PstRadiancePath:               inputfiles/pst.hdf5
+      Time0:                         20260718T015614
+
 
 Platform:
 
-    SolarPanelOrientation:           0               # 0, 90, 180, or 270 degrees for the different quarters of a year [deg]
-    UseJitter:                       yes             # yes or no. If no, ignore everything below.
-    JitterSource:                    FromRedNoise    # FromFile, FromRedNoise, or FromNetwork
-    JitterYawRms:                    0.04            # [arcsec]
-    JitterPitchRms:                  0.04            # [arcsec]
-    JitterRollRms:                   0.08            # [arcsec]
-    JitterTimeScale:                 3600.           # [s]
-    JitterFileName:                  inputfiles/PlatoJitter_Airbus.txt
+    Orientation:
+      Source:                        Angles          # Should be either "Angles" or "Quaternion" 
+      Angles:
+        RAPointing:                  86.8            # Platform (not telescope) right ascension pointing coordinate   [deg]
+        DecPointing:                -46.4            # Platform (not telescope) declination pointing coordinate       [deg]
+        SolarPanelOrientation:       -8.5            # Spacecraft roll angle to determine the solar panel orientation [deg]
+      Quaternion:                                    # Unit quaternion to transform from the equatorial to the platfrom reference frame
+        Components:                  [0.28799417562029345, -0.6861914144641562, 0.6254816331711222, 0.23446412111462545]   
+                                                     # [q0, qx, qy, qz] with norm = 1.0
+    UseJitter:                       yes             # Whether or not to incldue jitter. If no, ignore everything below.
+    JitterSource:                    FromRedNoise    # Jitter model: {FromFile, FromRedNoise, FromNetwork}
+    JitterYawRms:                    0.038           # RMS of RedNoise jitter in yaw   [arcsec]
+    JitterPitchRms:                  0.038           # RMS of RedNoise jitter in pitch [arcsec]
+    JitterRollRms:                   0.040           # RMS of RedNoise jitter in roll  [arcsec]
+    JitterTimeScale:                 250.            # Timescale of RedNoise jitter [s]
+    JitterFileName:                  inputfiles/jitter.txt
 
-
+    
 Telescope:
 
-    GroupID:                         Custom          # There are four camera groups: 1, 2, 3, 4, Fast, Custom
-                                                     # (use Custom to specify the telescope azimuth and tilt angles yourself)
-
-    AzimuthAngle:                    0.0             # Azimuth angle of telescope on the platform [deg]  - used when GroupID = Custom
-    TiltAngle:                       0.0             # Tilt angle of the telescope on the platform [deg] - used when GroupID = Custom
-
-    LightCollectingArea:             113.1           # Effective area of 1 telescope [cm^2]
+    GroupID:                         Custom          # Camera groups: {1, 2, 3, 4, Fast, Custom}
+    AzimuthAngle:                    0.0             # Azimuth angle of camera on the platform [deg] -> GroupID = Custom
+    TiltAngle:                       0.0             # Tilt    angle of camera on the platform [deg] -> GroupID = Custom
+    LightCollectingArea:             113.1           # Effective light collecting area of a camera [cm^2]
     TransmissionEfficiency:
-        BOL:                         0.8135          # Beginning of Life value in [0,1]
-        EOL:                         0.7945          # End of Life value in [0,1]
-    UseDrift:                        no              # yes or no. If no, ignore everything below.
-    UseDriftFromFile:                no              # yes or no. If yes: ignore RMS and timescale below
-    DriftYawRms:                     2.0             # RMS of thermo-elastic drift in yaw [arcsec]
-    DriftPitchRms:                   2.0             # RMS of thermo-elastic drift in pitch [arcsec]
-    DriftRollRms:                    2.0             # RMS of thermo-elastic drift in roll [arcsec]
-    DriftTimeScale:                  3600.           # Timescale of thermo-elastic drift [s]
+        BOL:                         0.8125          # Beginning of Life (BOL) value: [0, 1]
+        EOL:                         0.7941          # End       of Life (EOL) value: [0, 1]
+    UseDrift:                        no              # Include Thermo-Elastic Drift (TED): {yes, no}.
+    DriftSource:                     FromRedNoise    # TED model: {FromFile, FromRedNoise}
+    DriftYawRms:                     2.0             # RMS of RedNoise TED in yaw   [arcsec]
+    DriftPitchRms:                   2.0             # RMS of RedNoise TED in pitch [arcsec]
+    DriftRollRms:                    2.0             # RMS of RedNoise TED in roll  [arcsec]
+    DriftTimeScale:                  3600.           # Timescale of RedNoise TED [s]
     DriftFileName:                   inputfiles/drift.txt
 
 
@@ -74,15 +91,15 @@ Camera:
         Source:                      ConstantValue   # Either ConstantValue (constant in time) or FromFile (time dependent)
         ConstantValue:               0.24752         # Used in case Source is ConstantValue (from ZEMAX model) [m]
         FromFile:                    inputfiles/focallength.txt # Used in case Source is FromFile: time [s] & focalLenght [m]
-    ThroughputBandwidth:             532             # FWHM [nm]. Is different for fast cams than for normal cams.
-    ThroughputLambdaC:               550             # Central wavelength of the throughput passband [nm]
+    ThroughputBandwidth:             500             # Bandwidth of the PLATO passband [nm]. NOTE Different for F-CAMs
+    ThroughputLambdaC:               750             # Central wavelength of  passband [nm]. NOTE Different for F-CAMs
     IncludeAberrationCorrection:     yes             # Calculate the differential aberration correction and apply
     AberrationCorrection:
         Type:                        differential    # [differential, absolute]
-        OrbitFile:                   inputfiles/orbit.txt
-        StartTime:                   101489.207030
-    IncludeFieldDistortion:          yes             # Whether or not to include field distortion. This only applies when the PSF is not mapped from file. 
-    FieldDistortion:                                 # Distortion model from Wang et al. (2007) with coefficients: [k1, k2, k3, q1, q2, p1, p2]
+        OrbitFile:                   inputfiles/orbit_prime_10_years.txt   # Spacecraft orbit file containing t,X,Y,Z,Vx,Vy,Vz,|V|
+        StartTime:                   0.              # Start time of exposure # 0 in [s] where t=0 corresponds to 2027-01-20T15:30:00.000
+    IncludeFieldDistortion:          yes             # Whether or not to include field distortion. Not used when a MappedFromFile PSF is selectie.
+    FieldDistortion:                                 # Distortion model from Wang+2007 with coefficients: [k1, k2, k3, q1, q2, p1, p2]
         Source:                      ConstantValue   # Either ConstantValue (constant in time) or FromFile (time dependent)
         ConstantCoefficients:        [ 0.32419,  0.0232909,  0.407979,  0.00022463,  0.000217599,  0.000381958,  0.000963902]  # Normal  coefficients if Source is Constant
         ConstantInverseCoefficients: [-0.323487, 0.268344,  -0.435473, -0.00019304, -0.000176961, -0.000321713, -0.000827654]  # Inverse coefficients if Source is Constant
@@ -96,18 +113,18 @@ Camera:
             DistanceCutOff:          8                          # Sources within this radius from the optical axis produce a point-like ghost [degrees]
         Extended:
             FluxRatio:               0.06                       # Flux ratio between the extended ghost and the originating source [%]
-            RadiusCoefficients:      [0.0062, -0.0251, 1.8402]  # Coefficients of the 2nd-degree polynomial (in distance from the optical axis), describing the radius of the (circular) extended source
+            RadiusCoefficients:      [0.0062, -0.0251, 1.8402]  # Coefficients of the 2nd-degree polynomial (distance from the optical axis), describing the radius of the (circular) extended ghost
             DistanceRatio:           1.065                      # For a star at FP-coordinates (x, y), the centre of the extended ghost will be at (distanceRatio * x, distanceRatio * y)
 
 
 PSF:
 
-    Model:                           AnalyticNonGaussian      # PSF model: MappedFromFile, AnalyticGaussian or AnalyticNonGaussian
-    MappedFromFile:                                           # Read a pre-calculated and fixed PSF from an HDF5 file
+    Model:                           AnalyticNonGaussian      # PSF model: MappedFromFile or AnalyticNonGaussian
+    MappedFromFile:                                           # Read a Zemax (fixed) PSF from an HDF5 file
         Filename:                    inputfiles/PSF_Focus_0mu.hdf5
         NumberOfPixels:              8                        # The number of pixels in the field for which the PSF is generated
         ChargeDiffusionStrength:     0.2                      # Charge diffusion strength (width of the Gaussian diffusion kernel) [pixels]
-        IncludeChargeDiffusion:      no                       # Include charge diffusion [yes or no]
+        IncludeChargeDiffusion:      yes                      # Include charge diffusion [yes or no]
         IncludeJitterSmoothing:      no                       # Include jitter smoothing [yes or no]
     AnalyticGaussian:                                         # Generate the PSF analytically from a non-spherical Gaussian
         Sigma00:                     1.0                      # Stdev of Gaussian PSF in x- and y-direction at the optical axis      [pix]
@@ -128,7 +145,7 @@ FEE:
     NominalOperatingTemperature:     210.15          # Nominal operating temperature of the FEE [K]
     Temperature:                     Nominal         # Temperature fixed at the nominal operating temperature
     TemperatureFileName:             inputfiles/feeTemperature.txt
-    ReadoutNoise:                    32.0            # Readout noise for the FEE [e-/pixel] (same for both ADCs)
+    ReadoutNoise:                    32.0            # Readout noise for the FEE [e-/pixel] (same for both ADCs). NOTE Different for F-CAMs
     Gain:
         RefValueLeft:                0.0222          # [ADU/microV] (1 / (Total gain) = FFE gain * CCD gain = 1 / (25 e-/ADU))
         RefValueRight:               0.0222          # [ADU/microV] (1 / (Total gain) = FFE gain * CCD gain = 1 / (25 e-/ADU))
@@ -142,34 +159,34 @@ FEE:
         DecaySpeed:                  0.755           # Speed of the exponential decay function describing over-/undershoot
         DecayRate:                   1.277           # Rate of the exponential decay function describing over-/undershoot
         Range:                       5               # How far will in the readout register will pixels be affected by a signal change?
-    IncludeOverAndUnderShoot:        no              # Whether or not the over-/undershoot should be applied (for fast cameras only)
+    IncludeOverAndUnderShoot:        no              # Whether or not the over-/undershoot should be applied. NOTE Only applicable for F-CAMs
 
 
 CCD:
 
     Position:                        Custom          # One of [1, 2, 3, 4, Custom]
                                                      # (use Custom to specify the CCD position parameters yourself)
-
-    OriginOffsetX:                   0               # X Offset of CCD origin from center of focal plane [mm]
-    OriginOffsetY:                   0               # Y Offset of CCD origin from center of focal plane [mm]
-    Orientation:                     0               # Orientation of CCD w.r.t. focal plane orientation [deg] - use when CCDPosition = Custom
-    NumColumns:                      4510            # Number of columns on the CCD [pixels]                   - use when CCDPosition = Custom
-    NumRows:                         4510            # Number of rows on the CCD [pixels] (including non-exposed ones) - use when CCDPosition = Custom
-    FirstRowExposed:                 0               # The index of the first row that is exposed to light [pixels]
+    OriginOffsetX:                   0               # X offset of CCD origin from center of focal plane [mm]       -> Position = Custom
+    OriginOffsetY:                   0               # Y offset of CCD origin from center of focal plane [mm]       -> Position = Custom
+    Orientation:                     0               # Orientation of CCD w.r.t. focal plane orientation [deg]      -> Position = Custom
+    NumColumns:                      4510            # Number of columns on the CCD [pixel]                         -> Position = Custom
+    NumRows:                         4510            # Number of rows    on the CCD [pixel] (incl non-exposed ones) -> Position = Custom
+    FirstRowExposed:                 0               # The index of the first row that is exposed to light [pixel]
     TimeShift:                       0.0             # Extra time shift of the first exposure. Autoset when Position is in [1,2,3,4]. [s]
     PixelSize:                       18              # [micron]
     BFE:                                             # Brighter-fatter effect
         CoefficientsFileName:        inputfiles/a_bfe.hdf5  # File with the BFE coefficients, calculated by P. Astier
     Gain:
-        RefValueLeft:                2.14            # [microV/e-]
-        RefValueRight:               2.21            # [microV/e-]
+        RefValueLeft:                2.15            # F side of CCD [microV/e-]
+        RefValueRight:               2.15            # E side of CCD [microV/e-]
         Stability:                   -0.001          # [microV/e-/K]
         AllowedDifference:           15.0            # Difference in gain between both CCD halves [%]
+        Nonlinearity:                [0.0, -0.0042789409, 0.0000002365] # Output signal [ADU] = Bias + I + a0 + a1 * I + a2 * I^2,  I=input signal [ADU]
     QuantumEfficiency:
-        MeanQuantumEfficiency:       0.6218          # Mean quantum efficiency
+        MeanQuantumEfficiency:       0.6267          # Mean quantum efficiency [0, 1]. NOTE Different for F-CAMs
         MeanAngleDependency:         1.01            # Mean (over all pixels) of the relative efficiency due to the angle dependency of the  QE
     FullWellSaturation:              900000          # [e-/pixel]
-    DigitalSaturation:               65535           # E.g. 16 bit [ADU/pixel]
+    DigitalSaturation:               65535           # [ADU/pixel] -> 16 bit CCD
     ReadoutNoise:                    38.7            # [e-/pixel]
     SerialTransferTime:              340             # Time to shift the content of the readout register by one pixel [ns]
     ParallelTransferTime:            110             # Time to shift the charges one row down in case the readout register will be read out [µs]
@@ -179,7 +196,12 @@ CCD:
        Partial:
           FirstRowReadout:           0               # First row that will be read out by the FEE in partial-readout mode
           NumRowsReadout:            4510            # Number of rows that will be read out by the FEE, in partial-readout mode
-    FlatfieldNoiseRMS:               0.010           # Flatfield noise RMS (local PRNU)
+    Flatfield:                                       # Local PRNU
+        Source:                      FromRedNoise    # Flatfield source {FromFile, FromRedNoise}
+        FromFile:
+          FilePath:                  inputfiles/prnu.hdf5
+        FromRedNoise:
+          FlatfieldNoiseRMS:         0.010           # Flatfield noise RMS
     RelativeTransmissivity:                          # Overall relative transmissivity w.r.t. angular distance from the OA
         Coefficients:                [4.18e-2, -5.65e-5, 2.37e-7]  # Coefficients of the polynomial fit (k1 * x^2 + k2 * x^4 + k3 * x^6)
         RadiusFOV:                   18.8908         # Radius of the FOV [degrees]
@@ -189,6 +211,10 @@ CCD:
     Contamination:
         ParticulateContaminationEfficiency: 0.972    # Throughput efficiency due to particulate contamination
         MolecularContaminationEfficiency:   0.9573   # Throughput efficiency due to molecular contamination
+    BadPixelMap:
+        includeBadPixelMap:          yes
+        badPixelParameter:           0.001           # Parameter that governs the distribution of bad pixels.
+                                                     # For now this is the chance of having a bad pixel, following a bernoulli distribution.
     DarkSignal:
       DarkCurrent:                   1.2             # Dark current [e-/s]
       DSNU:                          15.0            # Dark signal non-uniformity [%]
@@ -203,10 +229,10 @@ CCD:
             NumTrapSpecies:          4               # Number of different trap species
             TrapDensity:                                                        # For each trap species [traps/pixel]
                 BOL:                 [0.0, 0.0, 0.0, 0.0]                       # Values at the Beginning Of Life
-                EOL:                 [9.8, 3.31, 1.56, 13.24]                   # Values at the End Of Life
+                EOL:                 [4.9, 1.655, 0.78, 6.62]                   # Values at the End Of Life
             TrapCaptureCrossSection: [2.46e-20, 1.74e-22, 7.05e-23, 2.45e-23]   # for each trap species [m^2]
             ReleaseTime:             [2.37e-4, 2.43e-2, 2.03e-3, 1.40e-1]       # for each trap species [s]
-        Short2013FromFile:                           # Allows to specify trap densities that vary spatially over the CCD 
+        Short2013FromFile:                           # Allows to specify trap densities that vary spatially over the CCD
             CTIFileName:             inputfiles/ctiInput.hdf5
     ChargeInjection:                                 # Inject charge once per exposure to mitigate the CTI effect
         InjectionLevel:              90.0            # Percentage of the full well to be filled [percentage: 0-100]
@@ -232,6 +258,7 @@ CCD:
     IncludeFullWellSaturation:       yes             # Whether or not full well saturation should be applied
     IncludeDigitalSaturation:        yes             # Whether or not digital saturation should be applied
     IncludeQuantisation:             yes             # Whether or not to include quantisation
+    IncludeGainNonlinearity:         yes             # Whether or not to include a non-linear gain (e- -> ADU)
 
 
 SubField:
@@ -240,8 +267,8 @@ SubField:
     ZeroPointColumn:                 0               # Column of the (0,0) pixel of the subfield [pixels]
     NumColumns:                      100             # Number of columns, should be >= 8 [pixels]
     NumRows:                         100             # Number of rows,    should be >= 8 [pixels]
-    NumBiasPrescanRows:              30              # Nr of rows of the prescan strip to determine the bias [pixels]
-    NumBiasPrescanColumns:           30              # Nr of columns of the prescan strip to determine the bias [pixels]
+    NumBiasPrescanRows:              25              # Nr of rows of the prescan strip to determine the bias [pixels]
+    NumBiasPrescanColumns:           15              # Nr of columns of the prescan strip to determine the bias [pixels]
     NumSmearingOverscanRows:         30              # Nr of rows of the overscan strip to determine the smearing [pixels]
     SubPixels:                       8               # (Sqrt of) nr of subpixels per CCD pixel. Should be 2^n <= 128.
 
@@ -251,7 +278,7 @@ Photometry:                                          # Only possible when 'Analy
     IncludePhotometry:               no              # The method described in Marchiori et al., 2019, A&A 627, A71 for in-flight photometry is used.
     ContaminationRadius:             4               # Only consider contaminants that are within this number of pixels [integer pixels]
     MaskUpdateInterval:              14.0            # Photometric masks will be updated every xx days  [days]
-    TargetFileName:                  inputfiles/photometryTargets.txt  # One column with star IDs for which you want to have photometry
+    TargetFileName:                  inputfiles/photometry.txt  # One column with star IDs for which you want to have photometry
 
 
 RandomSeeds:
@@ -263,36 +290,38 @@ RandomSeeds:
     DriftSeed:                       1433429158      # Unique positive integer, or -1 to auto-set using clock
     CosmicSeed:                      1494750830      # Unique positive integer, or -1 to auto-set using clock
     DarkSignalSeed:                  1468838669      # Unique positive integer, or -1 to auto-set using clock
+    BadPixelSeed:                    1443910483      # Unique positive integer, or -1 to auto-set using clock
 
 
 ControlHDF5Content:                                  # Data that can be written to the HDF5 output file
     GroupByExposure:                 yes             # Layout of several HDF5 file entries: If "yes" group by Exposure, if "no" group by StarID.
     WritePixelMaps:                  yes             # 2D Subfield Pixel maps for each exposure
-    WriteBiasMaps:                   yes             # 2D Bias maps for the left and right hand side of the CCD, for each exposure
-    WriteSmearingMaps:               yes             # 2D Smearing maps, for each exposure
+    WriteBiasMaps:                   yes             # 2D Bias maps for the left and right hand side of the CCD for each exposure
+    WriteSmearingMaps:               yes             # 2D Smearing maps for each exposure
     WriteFlatfieldMap:               yes             # 2D Flatfield maps (PRNU and/or IPRNU), for each exposure
-    WriteThroughputMaps:             yes             # 2D Throughput maps (QE, vignetting, contamination, etc.), for each exposure
-    WriteTransmissionEfficiency:     yes             # 2D Transmission Efficiency maps, for each exposure
+    WriteThroughputMaps:             yes             # 2D Throughput maps for each exposure (i.e. QE, vignetting, contamination, etc.)
+    WriteTransmissionEfficiency:     yes             # 2D Transmission Efficiency maps for each exposure
+    WriteBackgroundMap:              yes             # 2D Sky Background map (only if "WriteVariableBackgroundMap = no")
     WriteCTI:                        yes             # 2D Trap Density maps at BOL and EOL for each species
-    WriteSubPixelImages:             no              # 2D Subpixel maps, for each exposure: Only use this for a limited number of exposures as it takes a lot of space!
-    WriteDiffusedPSF:                no              # Diffused PSF (Only works for mapped PSF, takes a long time to compute)
-    WriteHighResolutionPSF:          no              # High resolution PSF (doesn't work for Analytic Gaussian PSF)
+    WriteSubPixelImages:             no              # 2D Subpixel maps, for each exposure: Only use this for a limited number of exposures!
+    WriteDiffusedPSF:                no              # 2D Diffused PSF
+    WriteHighResolutionPSF:          no              # 2D High resolution PSF
     WriteACS:                        yes             # AOCS for Camera yaw, pitch, roll
     WriteTelescopeACS:               yes             # AOCS for Platform Yaw, Pitch and Roll
     WriteStarCatalog:                yes             # Star Catalog used in simulation
     WriteStarPositions:              yes             # Star Positions written in pixel and focal plane coordinates
     WriteGhostPositions:             yes             # Ghost positions (extended and point-like) written in pixel and focal plane coordinates
     WriteCosmics:                    yes             # Cosmic rays written as pixel columns, rows and fluxes
+    WriteBadPixelMap:                yes             # Bad pixel map (binary values)
+
 
 ControlTcpConnection:
 
     SendImagettesToClients:          no
     GetWindowPositionsFromServer:    no
-
     WindowPositionServerAddress:     tcp://localhost:5558
     JitterServerAddress:             tcp://localhost:5559
     ImagetteClientAddress:           tcp://localhost:5560
-
     WindowPositionSocketTimeout:     100  # [s]
     JitterSocketTimeout:             100  # [s]
 

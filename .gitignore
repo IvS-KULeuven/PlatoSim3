@@ -1,5 +1,6 @@
 # Project related files to be ignored
 
+__pycache__/
 build/*
 inputfiles/*
 outputfiles/*
@@ -20,51 +21,71 @@ generated/version.h
 # Un-ignore some of the default input files in the inputfiles/ folder
 
 !inputfiles/inputfile.yaml
-!inputfiles/inputfileFast.yaml
-!inputfiles/photometryTargets.txt
-!starField_RA180Dec-70.txt
+!inputfiles/inputfile_FCAM_required.yaml
+!inputfiles/Plato_straylight_example_index_2574.csv
 !aps_N6000K_v2.txt
 !orbit.txt
+!orbit_prime_10_years.txt
 !inputfiles/cl2bCcds.txt
 !starcatalog.txt
 !starcatalogOld.txt
 !AOCS_spiral_8Hz_airbus_3h.txt
+!Plato_Straylight_PST.txt
+!pst.hdf5
 
-# Ignore compile command json file for neovim LSP
+# Compile command json file for neovim LSP
 
 compile_commands.json
 
-# Ignore output of ctags
+# Output of ctags
 
 tags
 
-# Ignore vim related files
+# Vim related files
 
 .ycm_extra_conf.py
 .local.vimrc
 
-# Ignore checkpoints of iPython notebooks
+# Checkpoints of Jupyter notebooks
 
 .ipynb_checkpoints/
 docs/tutorials/.ipynb_checkpoints/*
 docs/tutorials/*/.ipynb_checkpoints/*
 docs/validation/.ipynb_checkpoints/*
 docs/validation/*/.ipynb_checkpoints/*
+docs/technicalNotes/.ipynb_checkpoints/*
+docs/technicalNotes/*/.ipynb_checkpoints/*
 
-docs/tutorials/FineGuidanceStars/GuideStarSimulation00*
-docs/tutorials/Photometry/photometrySimulation*
-docs/tutorials/Photometry/photometryOutput.hdf5
-docs/validation/photometryOutput*
+# Output files from Jupyter notebooks
 
-# Ignore files for PLATOnium
+docs/*/*.txt
+docs/*/*.pdf
+docs/*/*.png
+docs/*/*.yaml
+docs/*/*.hdf5
+docs/*/*/*.ftr
+docs/*/*/*.txt
+docs/*/*/*.pdf
+docs/*/*/*.png
+docs/*/*/*.yaml
+docs/*/*/*.hdf5
+simulations_PlatoSimPaper2023/
 
-# platonium
-.platonium_init
+# Poetry
+
+poetry.lock
+
+# Setup script
+
+.bash_profile
 
 # varsim
+
 PHOENIX_HiResFITS/
-fitting_parameters.h5
 WAVE_PHOENIX-ACES-AGSS-COND-2011.fits
+varsim_exomass_fitting_parameters.h5
+RRL-CEP/
+response_*
 
 # Compiled source 
 
@@ -87,6 +108,7 @@ log.txt
 *.sqlite
 *.swp
 *.npy
+*.vot
 *~
 *#
 *.#*

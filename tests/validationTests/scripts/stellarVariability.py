@@ -2,7 +2,7 @@ import math
 import numpy             as np
 import matplotlib.pyplot as plt
 
-from test       import Test
+from test                import Test
 from platosim.validation import switchOffAllEffects
 
 

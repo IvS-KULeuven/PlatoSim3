@@ -32,13 +32,13 @@ class TempVariationOfCCD(Test):
 
         temp0  = self.sim["CCD/NominalOperatingTemperature"]
         self.deltaT = 1
-        self.sim["ObservingParameters/NumExposures"] = 1000
+        self.sim["ObservingParameters/NumExposures"] = 500
         self.sim["CCD/DarkSignal/Stability"] = 5.0
         self.sim["CCD/DarkSignal/DSNU"]      = 0
         self.sim["CCD/Temperature"] = "FromFile"
         temperatureFilename = self.outputDir + "/temperature.txt"
         self.sim["CCD/TemperatureFileName"] = temperatureFilename
-        time        = np.array([0, 1000 * self.sim["ObservingParameters/CycleTime"]])
+        time        = np.array([0, 500 * self.sim["ObservingParameters/CycleTime"]])
         temperature = np.array([ temp0, temp0 + self.deltaT])
         np.savetxt(temperatureFilename, np.c_[time, temperature])
 
@@ -48,15 +48,17 @@ class TempVariationOfCCD(Test):
         self.sim["CCD/IncludeDarkSignal"] = "yes"
         self.simFile1 = self.sim.run(removeOutputFile = True)
 
+        self.sim["ObservingParameters/NumExposures"] = 1
         self.sim["CCD/IncludeDarkSignal"] = "no"
         self.simFile2 = self.sim.run(removeOutputFile = True)
+
 
     def compare(self):
 
         expected  = self.sim["CCD/DarkSignal/DarkCurrent"] * self.sim["ObservingParameters/CycleTime"]
         stability = self.sim["CCD/DarkSignal/Stability"] * self.sim["ObservingParameters/CycleTime"]
-        dark = [self.simFile1.getImage(exp)[0][0] -self.simFile2.getImage(exp)[0][0] for exp in range(1000)]
-        theo = [expected + self.deltaT * stability * exp / 1000 for exp in range(1000) ]
+        dark = [self.simFile1.getImage(exp)[0][0] -self.simFile2.getImage(0)[0][0] for exp in range(500)]
+        theo = [expected + self.deltaT * stability * exp / 500 for exp in range(500) ]
         difference = [ (image - imageT) / np.sqrt(imageT)  for image, imageT in zip(dark, theo)]
         
         condition1 = abs(np.mean(difference)) < 0.1

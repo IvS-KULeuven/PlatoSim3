@@ -8,9 +8,9 @@ from platosim.validation import switchOffAllEffects
 
 
 """
-This test is designed the check the jitter from a given file. The test first generated three files, with only a change in  pitch, yaw or roll.  
-For a linear jitter in the pitch or yaw direction, the path that the star follows should be a straight line. 
-For a change in roll, we the path should follow a circle around the optical axis. 
+This test is designed the check the jitter from a given file. The test first generated three files, with only a change in  pitch, yaw or roll.
+For a linear jitter in the pitch or yaw direction, the path that the star follows should be a straight line.
+For a change in roll, we the path should follow a circle around the optical axis.
 """
 
 
@@ -165,6 +165,10 @@ class JitterFromFile(Test):
 
         simFile = self.sim.run(removeOutputFile = True)
         pos     = [simFile.getStarCoordinates(exp)[1:3] for exp in range(numEx-1)]
+
+        # Remove values for when no stars fall on the subfield
+        pos     = [(x, y) for x, y in pos if not ((x is None) and (y is None))]
+
         return zip(*pos)
 
 

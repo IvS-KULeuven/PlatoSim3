@@ -2,24 +2,24 @@
 
 /**
  * \brief Constructor.
- * 
+ *
  * \details
- * 
+ *
  * The constructor initializes the groups in the HDF5 file where the different maps (i.e. pixel map,
- * bias register map, smearing map, etc.) will be saved. 
- * 
+ * bias register map, smearing map, etc.) will be saved.
+ *
  * The following maps are initialized to zero (partly through the base class Detector):
- * 
- * pixelMap 
+ *
+ * pixelMap
  * subPixelMap
  * biasMap
  * smearingMap
  * flatfieldMap
  * throughputMap
  * cteMap
- * 
+ *
  * The flatfieldMap, throughputMap and cteMap are filled at pixel level.
- * 
+ *
  * \param configParam    Configuration parameters for the detector.
  * \param hdf5file       HFD5 file to write the detector images to.
  * \param camera         Camera to which to attach the detector.
@@ -39,9 +39,18 @@ DetectorWithAnalyticGaussianPSF::DetectorWithAnalyticGaussianPSF(ConfigurationPa
 
     if(includeFlatfield)
     {
-        // Generate the flatfield map
+        if (flatfieldSource == "FromRedNoise")
+        {
+            // Generate the flatfield map
 
-        generateFlatfieldMap();
+            generateFlatfieldMap();
+        }
+        else if (flatfieldSource == "FromFile")
+        {
+            // Read in the flatfield map
+
+            readInFlatfieldMap();
+        }      
     }
 }
 
@@ -72,8 +81,8 @@ DetectorWithAnalyticGaussianPSF::~DetectorWithAnalyticGaussianPSF()
 
 /**
  * \brief Configure the DetectorWithAnalyticGaussianPSF object using the ConfigurationParameters
- * 
- * \param configParam: the configuration parameters 
+ *
+ * \param configParam: the configuration parameters
  **/
 
  void DetectorWithAnalyticGaussianPSF::configure(ConfigurationParameters &configParam)
@@ -86,12 +95,23 @@ DetectorWithAnalyticGaussianPSF::~DetectorWithAnalyticGaussianPSF()
 
     // Get the configuration parameters for the PRNU
 
-    flatfieldNoiseRMS         = configParam.getDouble("CCD/FlatfieldNoiseRMS");
     includeFlatfield          = configParam.getBoolean("CCD/IncludeFlatfield");
-    flatfieldSeed             = configParam.getLong("RandomSeeds/FlatFieldSeed");
-    
+    if (includeFlatfield)
+    {
+        flatfieldSource = configParam.getString("CCD/Flatfield/Source");
+        if (flatfieldSource == "FromFile")
+        {
+            flatfieldFilePath = configParam.getAbsoluteFilename("CCD/Flatfield/FromFile/FilePath");
+        }
+        else if (flatfieldSource == "FromRedNoise")
+        {
+            flatfieldNoiseRMS = configParam.getDouble("CCD/Flatfield/FromRedNoise/FlatfieldNoiseRMS");
+            flatfieldSeed     = configParam.getLong("RandomSeeds/FlatFieldSeed");
+        }
+    }
+
     // The configuration for the HDF5 contents
-    
+
     writeFlatfieldMap = configParam.getBoolean("ControlHDF5Content/WriteFlatfieldMap");
  }
 
@@ -103,9 +123,62 @@ DetectorWithAnalyticGaussianPSF::~DetectorWithAnalyticGaussianPSF()
 
 
 
+/**
+ * \brief: Read in the flatfield variations from a file.
+ *
+ */
+
+void DetectorWithAnalyticGaussianPSF::readInFlatfieldMap()
+{
+    HDF5File prnuFile;
+    Log.info("Detector: reading in flatfield map.");
+
+    // Prepare the prnu map by performing some basic checks
+
+    if (!FileUtilities::fileExists(flatfieldFilePath))
+    {
+      throw FileException("Detectors: trying to load flatfield file (" + flatfieldFilePath + "), but file doesn't exist.");
+    }
+
+    try
+    {
+        prnuFile.open(flatfieldFilePath);
+    }
+    catch (H5::FileIException ex)
+    {
+        Log.error("H5::FileIException: " + string(ex.getCDetailMsg()));
+        throw H5FileException("Detector: Could not open flatfield HDF5 file: " + flatfieldFilePath);
+    }
+
+    // Select the correct subregion from our prnuFile
+    arma::Mat<float> prnuMap;
+    prnuFile.readArray("/", "PRNU", prnuMap);
+
+    flatfieldMap = prnuMap.submat(subFieldZeroPointRow, subFieldZeroPointColumn,
+                                   subFieldZeroPointRow+numRowsPixelMap-1,
+                                   subFieldZeroPointColumn+numColumnsPixelMap-1);
+
+
+    prnuFile.close();
+    if (writeFlatfieldMap)
+    {
+        Log.debug("Detector: writing PRNU to HDF5");
+        hdf5File.createGroup("/Flatfield");
+        hdf5File.writeArray("/Flatfield", "PRNU", flatfieldMap);
+    }
+}
+
+
+
+
+
+
+
+
+
 
  /**
- * \brief: Generate the (random) flatfield variations.  This map is generated
+ * \brief: Generate the (random) flatfield variations. This map is generated
  *         at pixel level but without the edge pixels.
  *
  * https://github.com/python-acoustics/python-acoustics/blob/master/acoustics/generator.py#L108
@@ -123,8 +196,8 @@ void DetectorWithAnalyticGaussianPSF::generateFlatfieldMap()
 
     // Double the dimensions (this is necessary because of the behaviour of the Fourier transforms)
 
-    int Nrows = 2 * numRowsPixelMap;
-    int Ncolumns = 2 * numColumnsPixelMap;
+    int unsigned Nrows    = 2 * numRowsPixelMap;
+    int unsigned Ncolumns = 2 * numColumnsPixelMap;
 
     arma::cx_fmat evenMap = arma::cx_fmat(Nrows, Ncolumns);
 
@@ -148,7 +221,7 @@ void DetectorWithAnalyticGaussianPSF::generateFlatfieldMap()
 
     unsigned int numRowsFlatfield = Nrows / 2;
     unsigned int numColumnsFlatfield = Ncolumns / 2;
-    
+
     flatfieldMap(arma::span::all, arma::span::all) = realMap(arma::span(0, numRowsFlatfield - 1), arma::span(0, numColumnsFlatfield - 1));
     flatfieldMap.reshape(numRowsFlatfield * numColumnsFlatfield, 1);
 
@@ -170,6 +243,7 @@ void DetectorWithAnalyticGaussianPSF::generateFlatfieldMap()
     if (writeFlatfieldMap)
     {
         Log.debug("Detector: writing PRNU to HDF5");
+        hdf5File.createGroup("/Flatfield");
         hdf5File.writeArray("/Flatfield", "PRNU", flatfieldMap);
     }
 }
@@ -187,15 +261,15 @@ void DetectorWithAnalyticGaussianPSF::generateFlatfieldMap()
 
 /**
  * \brief: Take an exposure with the detector starting at the given time.
- *         The light is integrated during the given exposure time, during which 
- *         the detector experiences the effects of jitter and thermo-elastic telescope 
+ *         The light is integrated during the given exposure time, during which
+ *         the detector experiences the effects of jitter and thermo-elastic telescope
  *         drift. The background is assumed uniform for the whole subfield.
  *         Afterwards, the collected light is read out, and various noise effects are added.
  *
  * \param exposureNr:   Sequential number of the exposure
  * \param startTime:    Starting time of the exposure [s].
  * \param exposureTime: Duration of the exposure [s].
- * 
+ *
  * \return endTime:     Time after the exposure (startTime + exposureTime + readoutTime)
  *
  * \pre Pixel, bias register, and smearing map filled with values from previous exposure.
@@ -210,10 +284,15 @@ double DetectorWithAnalyticGaussianPSF::takeExposure(int exposureNr, double star
     internalTime = startTime;
 
     // Clear all arrays
-    
+
     reset();
 
     // Integration of point sources and background, taking into account jitter + drift.
+
+    if (!constantSkyBackground && (exposureNr == beginExposureNr))
+    {
+        fillBackgroundMap(camera, startTime, exposureTime);
+    }
 
     Log.info("Detector: Integrating light for exposure " + to_string(exposureNr) + " with exposure time = " + to_string(exposureTime));
 
@@ -222,27 +301,23 @@ double DetectorWithAnalyticGaussianPSF::takeExposure(int exposureNr, double star
     // If this is the first exposure, we should initialize the number of occupied traps.
     // This can only be done after the detector
     // has been exposed to the skybackground.
-    // => Check if CTI is included && We use the Short2013 model
+    // => Check if CTI is included && we use the Short2013 model
 
     if (exposureNr == beginExposureNr) {
-      if (includeCTIeffects &&
-          (CTImodel == "Short2013" || CTImodel == "Short2013FromFile"))
-      {
-          setInitialNumberOfOccupiedTraps(numberOfOccupiedTrapsPixelMap);
-      }
+        if (includeCTIeffects && (CTImodel == "Short2013" || CTImodel == "Short2013FromFile")) {
+            setInitialNumberOfOccupiedTraps(numberOfOccupiedTrapsPixelMap);
+        }
     }
 
     // Include noise effects like readout noise, photon noise, full well saturation, etc.
     // Note: readOut() needs the exposure time to compute the open shutter smearing.
 
     Log.info("Detector: Adding noise effects to exposure " + to_string(exposureNr));
-
     readOut(exposureTime);
 
     // Write the CCD subfield, the bias map, and the smearing map to the HDF5 file
 
     Log.debug("Detector: Writing PixelMap, smearing map, and bias map #" + to_string(exposureNr) + " to HDF5 file.");
-
     writePixelMapsToHDF5(exposureNr);
 
     // Write the cosmic hits to the HDF5 file
@@ -251,9 +326,9 @@ double DetectorWithAnalyticGaussianPSF::takeExposure(int exposureNr, double star
 
     if (writeCosmics)
     {
-            if (groupByExposure){writeCosmicHitsToHDF5WhenGroupByExposure(exposureNr);}
-            else{writeCosmicHitsToHDF5WithoutGroupByExposure(exposureNr);}
+        writeCosmicHitsToHDF5(exposureNr);
     }
+
     // Advance the internal clock
 
     internalTime += exposureTime + readoutTimeBeforeNextExposure;
@@ -275,9 +350,9 @@ double DetectorWithAnalyticGaussianPSF::takeExposure(int exposureNr, double star
 /**
  * \brief: During an exposure, this method makes the detector integrate the light
  *         in small steps. During each step the slight change of star positions due
- *         to spacecraft jitter is taken into account. 
- *         
- *  \details  Besides jitter, also the sky background, and the flatfield is taken into 
+ *         to spacecraft jitter is taken into account.
+ *
+ *  \details  Besides jitter, also the sky background, and the flatfield is taken into
  *            account. The sub-pixel map is rebinned in a pixel map.  After rebinning,
  *            vignetting and polarisation are applied (if applicable).
  *
@@ -297,17 +372,24 @@ void DetectorWithAnalyticGaussianPSF::integrateLight(int exposureNr, double star
     // Integration (incl. jitter): point sources + background
     // PixelMap units after: [photons]
 
-    camera.exposeDetectorWithStars(*this, startTime, exposureTime, readoutTimeBeforeNextExposure);
-    camera.exposeDetectorWithSkyBackground(*this, startTime, exposureTime, readoutTimeBeforeNextExposure);
+    camera.exposeDetectorWithStars(*this, startTime, exposureTime);
+    if (constantSkyBackground)
+    {
+        camera.exposeDetectorWithSkyBackground(*this, startTime, exposureTime, readoutTimeBeforeNextExposure);
+    }
+    else
+    {
+        addBackgroundMapToPixelMap(camera, startTime);
+    }
 
     // Apply throughput efficiency on the pixel map.
     // This takes into account the QE, vignetting, polarisation, and particulate & molecular contamination.
-    // PixelMap units change from [photons] to [electrons] 
+    // PixelMap units change from [photons] to [electrons]
 
     applyThroughputEfficiency();
 
-    // Apply the charge injection which will mitigate the CTI. The injection happens in electrons, 
-    // so the throughput efficiency should already have been applied. The injected charges do feel the PRNU, 
+    // Apply the charge injection which will mitigate the CTI. The injection happens in electrons,
+    // so the throughput efficiency should already have been applied. The injected charges do feel the PRNU,
     // so applying the flatfied should happen afterwards.
 
     if (includeChargeInjection)
@@ -329,8 +411,6 @@ void DetectorWithAnalyticGaussianPSF::integrateLight(int exposureNr, double star
     {
         Log.debug("Detector: no flatfield applied.");
     }
-
-
 
     // Apply the effects of readout smearing due to an open shutter. Because there is no shutter,
     // the pixels are still receiving photons from the sky, while they are being transfered towards
@@ -362,8 +442,6 @@ void DetectorWithAnalyticGaussianPSF::integrateLight(int exposureNr, double star
         Log.debug("Detector: no photon noise added.");
     }
 
-
-    
     // Add dark current
 
     if(includeDarkSignal)
@@ -376,9 +454,6 @@ void DetectorWithAnalyticGaussianPSF::integrateLight(int exposureNr, double star
     {
         Log.debug("Detector: no dark current added");
     }
-
-
-    
 }
 
 
@@ -403,13 +478,13 @@ void DetectorWithAnalyticGaussianPSF::integrateLight(int exposureNr, double star
  * \param yFP   Y-coordinate of the (fractional) pixel in the focal plane in the FP reference frame [mm].
  * \param flux  Flux to add to the pixel map [photons].
  *
- * \return           (isInSubfield, row, col) 
+ * \return           (isInSubfield, row, col)
  *                   isInSubfield: True if (xFP, yFP) are on the subfield, false otherwise.
  *                   row:          subfield (not CCD) row number of the barycenter of the PSF.
  *                   col:          subfield (not CCD) column number of the barycenter of the PSF.
- *                   
+ *
  * \note In the code below, we use pixelMap(i,j) that involves a boundary check. To increase speed,
- *       switch to pixelMap.at(i,j) that does not involve a boundary check. 
+ *       switch to pixelMap.at(i,j) that does not involve a boundary check.
  */
 
 tuple<bool, double, double> DetectorWithAnalyticGaussianPSF::addFlux(double xFP, double yFP, double flux)
@@ -429,7 +504,7 @@ tuple<bool, double, double> DetectorWithAnalyticGaussianPSF::addFlux(double xFP,
         return make_tuple(false, row0, column0);
     }
 
-    // Depending on the angular distance from the optical axis, the PSF increases in size. 
+    // Depending on the angular distance from the optical axis, the PSF increases in size.
     // Determine the standard deviations in both directions.
     // Recall:
     //    sigma00:    Stdev of Gaussian PSF in x- and y-direction at the optical axis      [pix]
@@ -444,11 +519,11 @@ tuple<bool, double, double> DetectorWithAnalyticGaussianPSF::addFlux(double xFP,
     // Note: sigmaX corresponds to the column direction, sigmaY to the row direction.
 
     const double angle = Constants::PI - atan2(yFP, xFP);
-    
+
     arma::mat R(2,2);
     R << cos(angle) << -sin(angle) << arma::endr
       << sin(angle) <<  cos(angle) << arma::endr;
-    
+
     arma::mat invS(2,2);
     invS << 1./(sigmaY*sigmaY) <<         0          << arma::endr
          <<          0         << 1./(sigmaX*sigmaX) << arma::endr;
@@ -488,32 +563,33 @@ tuple<bool, double, double> DetectorWithAnalyticGaussianPSF::addFlux(double xFP,
         for (int col = int(floor(column0))-range; col < int(floor(column0))+range+1; col++)
         {
             if ((col < 0) || (col >= numColumnsPixelMap)) continue;
-        
+
             arma::colvec x = {double(row), double(col)};
             pixelMap(row, col) += preFactor * arma::exp(-0.5 * (x - mu).t() * invCov * (x-mu)).at(0,0);
         }
     }
 
     // That's it!
-    
+
     return make_tuple(true, row0, column0);
 }
 
 
 /**
  * \brief Insert the extended ghost with the given radius and flux at the given focal-plane position.
- * 
+ *
  * Note that the extended source will not be convolved with the PSF, for practical reasons (but since the
  * extended ghosts are so large, the influence of the PSF is negligible).
- * 
+ *
  * \param x0: Focal-plane x-coordinate of the centre of the extended ghost [mm].
  * \param y0: Focal-plane y-coordinate of the centre of the extended ghost [mm].
  * \param radius: Radius of the extended ghost [mm].
  * \param flux: Flux of the extended ghost [photons].
- * 
+ *
  * \return: Whether or not the extended source falls (at least partially) on the sub-field, and the
  *          (row, column) coordinates of the centre of the extended ghost in the pixel map.
  */
+
 tuple<bool, double, double> DetectorWithAnalyticGaussianPSF::addExtendedGhost(double x0, double y0, double radius, double flux)
 {
     // Calculate the number of pixels in the extended ghost
@@ -573,7 +649,6 @@ void DetectorWithAnalyticGaussianPSF::addFlux(double flux)
                       numRowsPixelMap - coveredTop - 1,
                       numColumnsPixelMap - coveredRight - 1) += flux;
     }
-
 }
 
 
@@ -587,7 +662,7 @@ void DetectorWithAnalyticGaussianPSF::addFlux(double flux)
 
 /**
  * \brief: Multiply the sub-pixel map with the flatfield.
- * 
+ *
  * NOTE: The sub-pixel map contains extra edge pixels, but the flatfield
  *       map does not. These edge pixels are excluded from this flatfield
  *       multiplication.

@@ -48,20 +48,26 @@ print("\n")
 
 
 
-installProcedure = "cd {build};                                     \
-                    tar -xzvf {package1}.tar.gz;                         \
-                    mkdir {install};					\
-                    cd {package1};					\
+installProcedure = "cd {build};                                         \
+                    tar -xzvf {package1}.tar.gz;                        \
+                    mkdir {install};                                    \
+                    cd {package1};                                      \
                     ./configure --prefix={install} --without-libsodium;	\
-                    make;						\
-                    make install;					\
-                    cd {build};						\
-                    tar -xzvf {package2}.tar.gz;			\
-                    cd {package2};					\
-                    mv *.hpp {install}/include/.;				\
-                    ".format(build=buildDir, package1=packageName1, package2=packageName2, install=installDir)
+                    make -j {num_threads};                              \
+                    make install;                                       \
+                    cd {build};                                         \
+                    tar -xzvf {package2}.tar.gz;                        \
+                    cd {package2};                                      \
+                    mv *.hpp {install}/include/.;                       \
+                    ".format(build=buildDir, 
+                             package1=packageName1, 
+                             package2=packageName2, 
+                             install=installDir,
+                             num_threads=os.environ.get("INSTALL_NUM_THREADS"))
 
-subprocess.call(installProcedure, shell=True)
+process = subprocess.run(installProcedure, shell=True)
+if not process.returncode == 0:
+    exit(1)
 
 
 # After installation in the install folder, remove the decompressed package folder in 

@@ -1,28 +1,35 @@
+#!/usr/bin/env python3
+
 """
 Run the PLATO Simulator from Python.
 
-The Simulation class provides the opportunity to interactively tune the input parameters
-before the simulator is started. The parameters that are available can be inspected by
-just printing the Simulation object, i.e. print (sim), which will dump all the parameters
+The Simulation class provides a Python interface to create script that
+interactively can tune the input parameters before launching PlatoSim.
+The parameters that are available can be inspected by just printing the
+Simulation object, i.e. print (sim), which will dump all the parameters
 and their current values on the command line.
-Simulation
-For usage see the Jupyter tutorial notebooks available at "PlatoSim/docs/tutorials".
+
+For usage, see the Jupyter notebook tutorials available at:
+PlatoSim/docs/tutorials.
 """
 
+# Built-in
 import os
 import sys
 import ast
 import math
-import yaml
-import pyaml
-import inspect
 import datetime
 import subprocess
+import warnings
+
+# PlatoSim standard
+import yaml
+import pyaml
 import numpy as np
 
-import platosim.referenceFrames as rf
-import platosim.instrument      as it
+# PlatoSim functions
 import platosim.utilities       as ut
+import platosim.referenceFrames as rf
 from platosim.simfile import SimFile
 
 
@@ -37,11 +44,11 @@ class Simulation(object):
 
     Simulation class allows running the PLATO simulator interactively from Python
     and tuning the input parameters before each run. For more help, type:
-    
+
     Example
     -------
     >>> import platosim.simulation as Simulation
-    >>> print(Simulation)
+   >>> print(Simulation)
     """
 
 
@@ -59,13 +66,15 @@ class Simulation(object):
         self.targetOutputFilesLocation = None
 
         # Set output directory
-        
+
         if outputDir is not None:
             self.outputDir = outputDir
+        else:
+            self.outputDir = os.getcwd()
 
         # Set simulation location
         
-        self.setSimulatorLocation();
+        self.setSimulatorLocation()
 
         # Read the YAML input file
         
@@ -74,10 +83,15 @@ class Simulation(object):
         else:
             self.readConfigurationFile( self.originalInputFilesLocation + "/inputfile.yaml" )
 
+        # Placeholders for True and False statements
+
+        self.true  = [True, "yes", "1"]
+        self.false = [False, "no", "0"]
 
 
 
 
+        
     def setSimulatorLocation(self):
 
         """Set the location of the simulation.
@@ -102,18 +116,18 @@ class Simulation(object):
             self.platosimBuildLocation = self.platosimLocation + "/bin"
 
         else:
-            raise Exception("Unexpected directory structure for this PLATO Simulator" +
-                            "distribution: no build nor bin sub-directory in PLATO_PROJECT_HOME")
+            raise Exception("Unexpected directory structure for this PlatoSim distribution: " +
+                            "No build nor bin sub-directory in $PLATO_PROJECT_HOME")
 
         # This is the location of the original input files as distributed by the PLATO Simulator
 
-        self.originalInputFilesLocation = self.platosimLocation + "/inputfiles"
+        self.originalInputFilesLocation  = self.platosimLocation + "/inputfiles"
         self.originalOutputFilesLocation = self.platosimLocation + "/outputfiles"
 
 
 
 
-
+        
     @property
     def outputDir(self):
 
@@ -137,16 +151,14 @@ class Simulation(object):
 
         if not os.path.exists(path):
             if self.debug:
-                print("DEBUG: creating output directory {}.".format(path))
+                print(f"DEBUG: creating output directory {path}")
             self.createDirectory(path)
 
         self.targetOutputFilesLocation = path
         self.hasTargetLocation = True
 
         if self.debug:
-            print("DEBUG: output dir set to {}.".format(path))
-
-
+            print(f"DEBUG: output directory set to {path}")
 
 
 
@@ -158,7 +170,7 @@ class Simulation(object):
         self.configurationFilename = filename
 
         if self.debug:
-            print("Parsing YAML configuration file {}.".format(filename))
+            print(f"DEBUG: Parsing YAML configuration file {filename}")
 
         with open(filename, 'r') as stream:
             try:
@@ -177,10 +189,22 @@ class Simulation(object):
         
         return self.yamlDocument
 
+    
+
+
+    
+    def showYamlConfiguration(self):
+
+        """Return the YAML configuration as a dictionary.
+        """
+
+        YAML = self.getYamlConfiguration()
+        print(pyaml.dump(YAML))
 
 
 
 
+        
     def __contains__(self, key):
 
         """Returns true if the input parameter (key) is known/exists.
@@ -205,7 +229,7 @@ class Simulation(object):
         node = self.yamlDocument
 
         for nodeName in nodeNames:
-            print("> {}, {}".format(nodeName, type(node)))
+            print(f"> {nodeName}, {type(node)}")
             try:
                 node = node[nodeName]
             except:
@@ -233,12 +257,14 @@ class Simulation(object):
         """
 
         # Split the path into node names
-        # E.g. "PSF/MappedGaussian/Sigma" into ["PSF", "MappedGaussian", "Sigma"]
+        # E.g. "PSF/MappedGaussian/Sigma" into [PSF, MappedGaussian, Sigma]
 
         if key.find('/') == -1:
+            # FIXME: parentNodeName assigned but never used
             parentNodeName, nodeName = key, None
-            print("usage: the given parameter name (key) should include the group name of the group that contains the parameter.")
-            print("       E.g in 'Camera/PlateScale', Camera is the group, PlateScale is the parameter.")
+            print("Usage: the given parameter name (key) should include the group name " +
+                  "of the group that contains the parameter. E.g in 'Camera/PlateScale', " +
+                  "'Camera' is the group, 'PlateScale' is the parameter.")
             return None
         else:
             nodeNames = key.split("/")
@@ -251,14 +277,16 @@ class Simulation(object):
             if nodeName in node:
                 node = node[nodeName]
             else:
-                print("ERROR: The group '{}' was not found in the yaml inputfile '{}'.".format(key, self.configurationFilename))
+                print(f"ERROR: The group '{key}' was not found in the " +
+                      f"yaml inputfile '{self.configurationFilename}'")
                 return None
 
         # Node is a string, so cast it to its proper value
 
         try:
             value = ast.literal_eval(node)
-        except ValueError:
+        except Exception:
+            
             value = node
 
         # Return the value of the deepest node
@@ -297,7 +325,7 @@ class Simulation(object):
         # E.g. "PSF/MappedGaussian/Sigma" into ["PSF", "MappedGaussian", "Sigma"]
 
         if key.find('/') == -1:
-            print ("usage: the given parameter name (key) should include the " +
+            print ("USAGE: the given parameter name (key) should include the " +
                    "group name of the group that contains the parameter.")
             print ("       E.g in 'Camera/PlateScale', Camera is the group," +
                    "PlatScale is the parameter.")
@@ -308,7 +336,7 @@ class Simulation(object):
         # Check whether the parent node is in the document. If not, complain
 
         if nodeNames[0] not in self.yamlDocument:
-             print(f"Error: no node with the name {nodeNames[0]} found in input yaml file")
+             print(f"ERROR: no node with the name {nodeNames[0]} found in input yaml file")
              return False
 
         # If there is only 1 node in the path, we're finished after setting its value
@@ -317,10 +345,12 @@ class Simulation(object):
             self.yamlDocument[nodeNames[0]] = item
             return True
 
-        # If we arrive here, there are at least 2 node in the path, check if 2nd parent node exists
+        # If we arrive here, there are at least 2 node in the path,
+        # check if 2nd parent node exists
 
         if nodeNames[1] not in self.yamlDocument[nodeNames[0]]:
-             print(f"Error: no node with the name {nodeNames[0]}/{nodeNames[1]} found in input yaml file")
+             print("ERROR: no node with the name " +
+                   f"{nodeNames[0]}/{nodeNames[1]} found in input yaml file")
              return False
 
         # If there are only 2 nodes in the path, we're finished after setting its value
@@ -329,10 +359,12 @@ class Simulation(object):
             self.yamlDocument[nodeNames[0]][nodeNames[1]] = item
             return True
 
-        # If we arrive here, there are at least 3 nodes in the path, check if 3rd parent node exists
+        # If we arrive here, there are at least 3 nodes in the path,
+        # check if 3rd parent node exists
 
         if nodeNames[2] not in self.yamlDocument[nodeNames[0]][nodeNames[1]]:
-             print(f"Error: no node with the name {nodeNames[0]}/{nodeNames[1]}/{nodeNames[2]} found in input yaml file")
+             print("ERROR: no node with the name " +
+                   f"{nodeNames[0]}/{nodeNames[1]}/{nodeNames[2]} found in input yaml file")
              return False
 
         # If there are only 3 nodes in the path, we're finished after setting its value
@@ -344,19 +376,36 @@ class Simulation(object):
         # If we arrive here, there are at least 4 nodes in the path, check if 4th parent node exists
 
         if nodeNames[3] not in self.yamlDocument[nodeNames[0]][nodeNames[1]][nodeNames[2]]:
-             print("Error: no node with the name {nodeNames[0]}/{nodeNames[1]}/{nodeNames[2]}/{nodeNames[3]} found in input yaml file")
+             print("ERROR: no node with the name " +
+                   f"{nodeNames[0]}/{nodeNames[1]}/{nodeNames[2]}/{nodeNames[3]} " +
+                   "found in input yaml file")
              return False
 
-        # If there are only 34nodes in the path, we're finished after setting its value
+        # If there are only 4 nodes in the path, we're finished after setting its value
 
         if len(nodeNames) == 4:
             self.yamlDocument[nodeNames[0]][nodeNames[1]][nodeNames[2]][nodeNames[3]] = item
             return True
 
-        # If we arrive here, there are at least 5 nodes in the path.
+
+        # If we arrive here, there are at least 5 nodes in the path, check if 5th parent node exists
+
+        if nodeNames[4] not in self.yamlDocument[nodeNames[0]][nodeNames[1]][nodeNames[2]][nodeNames[3]]:
+             print("ERROR: no node with the name " +
+                   f"{nodeNames[0]}/{nodeNames[1]}/{nodeNames[2]}/{nodeNames[3]}/{nodeNames[4]} " +
+                   "found in input yaml file")
+             return False
+
+        # If there are only 5 nodes in the path, we're finished after setting its value
+
+        if len(nodeNames) == 5:
+            self.yamlDocument[nodeNames[0]][nodeNames[1]][nodeNames[2]][nodeNames[3]][nodeNames[4]] = item
+            return True
+
+        # If we arrive here, there are at least 6 nodes in the path.
         # Issue a not-implemented error message.
 
-        print("Error: detected 5 or more nodes in the path {0}".format(key))
+        print(f"Error: Not Implemented: detected 6 or more nodes in the path {key}")
         return False
 
 
@@ -373,7 +422,7 @@ class Simulation(object):
         except OSError as ose:
             print (ose)
             if not os.path.isdir(path):
-                raise Exception("Could not create directory {}".format(path))
+                raise Exception(f"Could not create directory {path}")
 
         return
 
@@ -395,7 +444,7 @@ class Simulation(object):
         """
         
         if self.debug:
-            print ("Writing the Yaml configuration file {}.".format(filename))
+            print(f"DEBUG: writing the YAML configuration file {filename}")
         with open(filename, 'w') as outfile:
             outfile.write( pyaml.dump(self.yamlDocument, indent=4, width=120) )
 
@@ -416,8 +465,8 @@ class Simulation(object):
         
         Return
         ------
-        When PlatoSim fails for some reason and returns an error code (!= 0),
-        an Exception is raised.
+        When PlatoSim fails for some reason and returns an error code (!= 0), an Exception
+        is raised.
         """
 
         if executionTime:
@@ -452,13 +501,12 @@ class Simulation(object):
                                                inputFilename, outputFilename, logFilename,
                                                str(logLevel)],
                                                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-
-            # print(str(completedProcess.stdout.decode("utf-8")))
-            # print(str(completedProcess.stderr.decode("utf-8")))
-
+            
             if completedProcess.returncode:
+                print(str(completedProcess.stdout.decode("utf-8")))
+                print(str(completedProcess.stderr.decode("utf-8")))
                 raise Exception("Simulation.run(): PlatoSim returned with " +
-                                "exit code {completedProcess.returncode}.")
+                                f"exit code {completedProcess.returncode}.")
 
         # Print computation time
         
@@ -492,9 +540,30 @@ class Simulation(object):
 
 
 
-    def writeAllOutputToHDF5(self, write=True):
+    def turnOffAllOutput(self):
 
-        """Function to write all or nothing to the HDF5 file.
+        """Function to write nothing to the HDF5 file.
+        """
+
+        # Fetch names of ControlHDF5Content attributes
+
+        group = "ControlHDF5Content"
+        entries = []
+        for name, dict_ in self.yamlDocument[group].items():
+            entries.append(name)
+
+        # Control the content
+        
+        for entry in entries:
+            self.__setitem__(f"{group}/{entry}", False)
+
+            
+
+
+
+    def turnOnAllOutput(self):
+
+        """Function to write all to the HDF5 file.
         """
 
         # Fetch names of ControlHDF5Content attributes
@@ -507,69 +576,406 @@ class Simulation(object):
         # Control the content
 
         for entry in entries:
-
-            # Set all HDF5 content parameters to "yes"
-
-            if write:
-                self.__setitem__(f"{group}/{entry}", "yes")
-
-            # Set all HDF5 content parameters to "no"
-
-            elif write is False:
-                self.__setitem__(f"{group}/{entry}", "no")
-
-            else:
-                ut.errorcode("error", "only 'True' or 'False' can be parsed as argument!")
+            self.__setitem__(f"{group}/{entry}", True)
+                
 
 
 
 
+    def showAllOutput(self):
 
-    def useNominalCamera(self):
-
-        """Change the input parameters to use the nominal camera's.
-
-        The following parameters are updated:
-        
-            CCD/NumColumns = 4510
-            CCD/NumRows    = 4510
-            ObservingParameters/CycleTime = 25
+        """Function to write all to the HDF5 file.
         """
 
-        self.__setitem__("CCD/NumColumns", "4510")
-        self.__setitem__("CCD/NumRows",    "4510")
+        # Fetch names of ControlHDF5Content attributes
+
+        group = "ControlHDF5Content"
+        entries = []
+        for name, dict_ in self.yamlDocument[group].items():
+            entries.append(name)
+
+        # Show the control content
+
+        for entry in entries:
+            switch = self.__getitem__(f"{group}/{entry}")
+            print(f"{group}/{entry} = {switch}")
+
+
+
+
+            
+    def controlAllEffects(self, switch):
+
+        """Function to write all or nothing to the HDF5 file.
+
+        Parameters
+        ----------
+        switch : str, bool
+            If 'yes' ('True')  turn on  all effects
+            If 'no'  ('False') turn off all effects
+        
+        Notes
+        -----
+        Parameters that are turned on/off:
+        - Cosmic rays
+        - AOCS jitter
+        - Thermo-elastic drift (TED)
+        - Aberration correction (absolute + differential)
+        - Field distortion
+        - Charge diffusion
+        - Jitter smoothing
+        - Flatfield
+        - Dark signal
+        - Brighter-fatter effect (BFE)
+        - Photon noise
+        - Readout noise
+        - Charge transfer inefficiency (CTI)
+        - Open-shutter smearing
+        - Overall relative transmissivity
+        - Polarisation
+        - Particulate contamination
+        - Molecular contamination
+        - Quantum efficiency
+        - Convolution with the PSF (Zemax only)
+        - Full-well saturation (blooming)
+        - Digital saturation
+        - Quantisation
+        """
+        
+        # Sky parameters
+
+        self["Sky/IncludeCosmicsInSubField"]    = switch
+        self["Sky/IncludeCosmicsInSmearingMap"] = switch
+        self["Sky/IncludeCosmicsInBiasMap"]     = switch
+
+        # Platform parameters
+
+        self["Platform/UseJitter"] = switch
+
+        # Telescope parameters
+
+        self["Telescope/UseDrift"] = switch
+
+        # Camera parameters
+
+        self["Camera/IncludeAberrationCorrection"] = switch
+        self["Camera/IncludeFieldDistortion"]      = switch
+        self["Camera/IncludePointLikeGhosts"]      = switch
+        self["Camera/IncludeExtendedGhosts"]       = switch
+
+        # PSF parameters
+
+        self["PSF/MappedFromFile/IncludeChargeDiffusion"]      = switch
+        self["PSF/AnalyticNonGaussian/IncludeChargeDiffusion"] = switch
+        self["PSF/MappedFromFile/IncludeJitterSmoothing"]      = switch
+
+        # FEE parameters
+
+        self["FEE/IncludeOverAndUnderShoot"] = switch
+        
+        # CCD parameters
+
+        self["CCD/IncludeFlatfield"]                = switch
+        self["CCD/IncludeDarkSignal"]               = switch
+        self["CCD/IncludeBFE"]                      = switch
+        self["CCD/IncludePhotonNoise"]              = switch
+        self["CCD/IncludeReadoutNoise"]             = switch
+        self["CCD/IncludeCTIeffects"]               = switch
+        self["CCD/IncludeChargeInjection"]          = switch
+        self["CCD/IncludeOpenShutterSmearing"]      = switch
+        self["CCD/IncludeQuantumEfficiency"]        = switch
+        self["CCD/IncludeRelativeTransmissivity"]   = switch
+        self["CCD/IncludePolarization"]             = switch
+        self["CCD/IncludeParticulateContamination"] = switch
+        self["CCD/IncludeMolecularContamination"]   = switch
+        self["CCD/IncludeConvolution"]              = switch
+        self["CCD/IncludeFullWellSaturation"]       = switch
+        self["CCD/IncludeDigitalSaturation"]        = switch
+        self["CCD/IncludeQuantisation"]             = switch
+        self["CCD/IncludeGainNonlinearity"]         = switch
+
+        # Straylight
+        self["StrayLight/IncludeStraylight"]        = switch
+
+
+
+
+        
+    def turnOnAllEffects(self):
+
+        """Function to switch off all writing to the HDF5 file.
+
+        NOTE: function uses controlAllEffects()
+        """
+
+        self.controlAllEffects("yes")
+
+
+
+
+        
+    def turnOffAllEffects(self):
+
+        """Function to switch off all writing to the HDF5 file.
+
+        NOTE: function uses controlAllEffects()
+        """
+
+        self.controlAllEffects("no")
+
+
+
+
+
+    def useDetectorGain(self, performance="required"):
+
+        """Change the detector gain.
+
+        The parameters are from the Mission Parameter Database (MPD):
+        http://ptoops02.esac.esa.int/mpdb/home
+
+        Notes
+        -----
+        * A mean value of the CCD gain min/max and F/E side value are used from the MPD
+        * The FEE gain is then calculated requiring that the:
+          Total gain = 1 / (gainFFE * gainCCD) = 25 e-/ADU
+        """
+        
+        if performance == "required":
+            # CCD gain F/E side: (min, max) = (1.8, 2.5)
+            self.__setitem__("CCD/Gain/RefValueLeft",  "2.15")    # [microV/e-]
+            self.__setitem__("CCD/Gain/RefValueRight", "2.15")    # [microV/e-]
+            self.__setitem__("FEE/Gain/RefValueLeft",  "0.0186")  # [ADU/microV]
+            self.__setitem__("FEE/Gain/RefValueRight", "0.0186")  # [ADU/microV]
+
+        elif performance in ["expected", "designed"]:
+            # CCD gain F side (min, max) = (2.08, 2.28) -> 2.18 microV/e- 
+            # CCD gain E side (min, max) = (2.04, 2.26) -> 2.15 microV/e-
+            self.__setitem__("CCD/Gain/RefValueLeft",  "2.18")
+            self.__setitem__("CCD/Gain/RefValueRight", "2.15")
+            self.__setitem__("FEE/Gain/RefValueLeft",  "0.018348")
+            self.__setitem__("FEE/Gain/RefValueRight", "0.0186")
+
+        else:
+            raise ValueError("Not valid performance entry! " +
+                             "Use either ['required', 'expected', 'designed']")
+        
+        return
+
+
+
+
+
+
+    def useTimeDependentDetectorNoise(self, performance="required", timeFromBOL=0,
+                                      camera="Normal"):
+
+        """Change noise properties of CCD/FEE.
+        
+        The parameters are from the Mission Parameter Database:
+        http://ptoops02.esac.esa.int/mpdb/home
+
+        Notes
+        -----
+        - Assumption that parameters are the same for F and E side of CCD
+        - Assumption that the dark signal for N-CAM and F-CAM (F and E side) are the same        
+        - NOTE: 'required' or 'designed' F-FEE readout noise EOL missing
+        - NOTE: 
+        """
+        
+        times = [0, self["ObservingParameters/MissionDuration"]*ut.year()]
+
+        # FEE readout noise [e-] -> independent on performance
+        
+        if camera == "Normal":
+            readNoiseFEE = ut.evalLinReg(times, np.array([32.8, 37.7]), timeFromBOL)
+        elif camera == "Fast":
+            readNoiseFEE = 203.0
+        else:
+            raise ValueError("Not valid entry! Usage in ['Normal', 'Fast']")
+
+        # Choose performance
+        
+        if performance == "required":
+            readNoiseCCD  = ut.evalLinReg(times, np.array([24.5, 28.0]), timeFromBOL)
+            darkCurrent   = ut.evalLinReg(times, np.array([ 1.2,  4.5]), timeFromBOL)
+            darkStability = 5.0
+            DSNU          = 15.0
+
+        elif performance in ["expected", "designed"]:
+            readNoiseCCD  = ut.evalLinReg(times, np.array([23.2,   25.0]), timeFromBOL)
+            darkCurrent   = ut.evalLinReg(times, np.array([ 0.544,  4.0]), timeFromBOL)
+            darkStability = 0.7
+            DSNU          = 13.0
+            
+        else:
+            raise ValueError("Not valid performance entry! " +
+                             "Use either ['required', 'expected', 'designed']")
+
+        # Set all parameters from above
+        
+        self.__setitem__("CCD/DarkSignal/DarkCurrent", f"{darkCurrent}")
+        self.__setitem__("CCD/DarkSignal/Stability",   f"{darkStability}")
+        self.__setitem__("CCD/DarkSignal/DSNU",        f"{DSNU}")
+        self.__setitem__("CCD/ReadoutNoise",           f"{readNoiseCCD}")
+        self.__setitem__("FEE/ReadoutNoise",           f"{readNoiseFEE}")
+
+        return
+    
+
+
+
+    
+    def useNormalCamera(self, performance=False, timeFromBOL=0):
+
+        """Change the input parameters to use the N-CAM.
+        
+        The parameters are from the Mission Parameter Database:
+        http://ptoops02.esac.esa.int/mpdb/home
+        """
+
+        self.__setitem__("CCD/NumColumns",                "4510")
+        self.__setitem__("CCD/NumRows",                   "4510")
         self.__setitem__("ObservingParameters/CycleTime", "25")
 
+        # NOTE These are the same for all requirements
+
+        self.__setitem__("Camera/ThroughputLambdaC",   "750")        
+        self.__setitem__("Camera/ThroughputBandwidth", "500")
+        
+        # If requested, select basic input parameters from MPD
+
+        if performance in ["required", "expected", "designed"]:
+            self.useDetectorGain(performance)
+            self.useTimeDependentDetectorNoise(performance, timeFromBOL)
+
+        # Other wavelength dependent parameters
+            
+        if performance == 'required':
+            self.__setitem__("Telescope/TransmissionEfficiency/BOL",        "0.8125")
+            self.__setitem__("Telescope/TransmissionEfficiency/EOL",        "0.7941")
+            self.__setitem__("CCD/QuantumEfficiency/MeanQuantumEfficiency", "0.6267")
+
+        elif performance == 'expected':
+            self.__setitem__("Telescope/TransmissionEfficiency/BOL",        "0.8752")
+            self.__setitem__("Telescope/TransmissionEfficiency/EOL",        "0.8752")
+            # TODO No QE values for the "as designed" scenario in MPDB! We use "as designed":
+            self.__setitem__("CCD/QuantumEfficiency/MeanQuantumEfficiency", "0.6552")
+
+        elif performance == 'designed':
+            self.__setitem__("Telescope/TransmissionEfficiency/BOL",        "0.8700")
+            self.__setitem__("Telescope/TransmissionEfficiency/EOL",        "0.8700")
+            self.__setitem__("CCD/QuantumEfficiency/MeanQuantumEfficiency", "0.6552")
+     
         return
 
 
 
 
 
-    def useFastCamera(self):
+    def useFastCamera(self, passband, performance=False, timeFromBOL=0):
 
-        """Change the input parameters to use the fast camera's.
+        """Change the input parameters to use the F-CAM.
 
-        The following parameters are updated:
+        Parameters
+        ----------
+        
+        The parameters are from the Mission Parameter Database:
+        http://ptoops02.esac.esa.int/mpdb/home
+        
+        Notes
+        -----
+        Effects that are unique for the F-CAMs:
+        - FEE overshoot/undershoot (TODO not working properly yet)
 
-            CCD/NumColumns = 4510
-            CCD/NumRows    = 2255
-            ObservingParameters/CycleTime    = 2.5
-            ObservingParameters/ExposureTime = 2.3
+        The following parameters are wavelenght dependent:
+        - Photometric reference flux (and irradiance -> only PIS)
+        - Tranmission efficiency (built-in linear model given BOL->EOL)
+        - Throughput bandwidth
+        - Central wavelength of the throughput passband
+        - Quantum efficiency
         """
 
-        self.__setitem__("CCD/NumColumns", "4510")
-        self.__setitem__("CCD/NumRows",    "2255")
+        self.__setitem__("Telescope/GroupID",             "Fast")
+        self.__setitem__("CCD/NumColumns",                "4510")
+        self.__setitem__("CCD/NumRows",                   "2255")
         self.__setitem__("ObservingParameters/CycleTime", "2.5")
 
+        # If requested, set parameters that are independent of the filter
+        
+        if performance in ["required", "designed"]:
+
+            # Select noise properties for CCD and FEE
+            
+            self.useDetectorGain(performance)
+            self.useTimeDependentDetectorNoise(performance, timeFromBOL, camera="Fast")
+        
+        # Select time and wavelength dependent parameters
+        # NOTE the 'as designed' tranmission efficiency is identical for both F-CAMs
+        
+        if passband == "blue":
+
+            # Parameters that are the same for all requirements
+            self.__setitem__("ObservingParameters/Fluxm0", "1.195e8")
+            
+            if performance == 'required':
+                self.__setitem__("Camera/ThroughputLambdaC",   "578")
+                self.__setitem__("Camera/ThroughputBandwidth", "145")
+                self.__setitem__("Telescope/TransmissionEfficiency/BOL",        "0.6745")
+                self.__setitem__("Telescope/TransmissionEfficiency/EOL",        "0.6549")
+                self.__setitem__("CCD/QuantumEfficiency/MeanQuantumEfficiency", "0.8505")     
+                
+            elif performance == 'expected':
+                self.__setitem__("Camera/ThroughputLambdaC",   "585")                
+                self.__setitem__("Camera/ThroughputBandwidth", "165")                
+                self.__setitem__("Telescope/TransmissionEfficiency/BOL",        "0.6566")
+                self.__setitem__("Telescope/TransmissionEfficiency/EOL",        "0.6566")
+                # TODO No QE values for the "as expected" scenario in MPDB! We use designed:   
+                self.__setitem__("CCD/QuantumEfficiency/MeanQuantumEfficiency", "0.8986")
+
+            elif performance == 'designed':
+                self.__setitem__("Camera/ThroughputLambdaC",   "600")
+                self.__setitem__("Camera/ThroughputBandwidth", "200")
+                self.__setitem__("Telescope/TransmissionEfficiency/BOL",        "0.8578")
+                self.__setitem__("Telescope/TransmissionEfficiency/EOL",        "0.8578")
+                self.__setitem__("CCD/QuantumEfficiency/MeanQuantumEfficiency", "0.8986")
+                
+        elif passband == "red":
+
+            # Parameters that are the same for all requirements
+            self.__setitem__("ObservingParameters/Fluxm0", "0.923e8")
+            self.__setitem__("Camera/ThroughputLambdaC",   "833")                
+            self.__setitem__("Camera/ThroughputBandwidth", "335")
+           
+            if performance == 'required':
+                self.__setitem__("Telescope/TransmissionEfficiency/BOL",        "0.6980")
+                self.__setitem__("Telescope/TransmissionEfficiency/EOL",        "0.6845")
+                self.__setitem__("CCD/QuantumEfficiency/MeanQuantumEfficiency", "0.5184")
+
+            elif performance == 'expected':
+                self.__setitem__("Telescope/TransmissionEfficiency/BOL",        "0.7266")
+                self.__setitem__("Telescope/TransmissionEfficiency/EOL",        "0.7266")
+                # TODO No QE values for the "as expected" scenario in MPDB! We use designed:
+                self.__setitem__("CCD/QuantumEfficiency/MeanQuantumEfficiency", "0.5344")
+                
+            elif performance == 'designed':
+                self.__setitem__("Telescope/TransmissionEfficiency/BOL",        "0.8604")
+                self.__setitem__("Telescope/TransmissionEfficiency/EOL",        "0.8604")
+                self.__setitem__("CCD/QuantumEfficiency/MeanQuantumEfficiency", "0.5344")
+
+        else:
+            errorcode('warning', 'Wrong passband name, use either "blue" or "red"!')    
+            
         return
 
 
 
 
-
-    def setSubfieldAroundPixelCoordinates(self, ccdCode, xCCDpixel, yCCDpixel,
-                                          subfieldSizeX, subfieldSizeY):
+    
+    def setSubfieldAroundPixelCoordinates(self, ccdCode,
+                                          xCCDpixel, yCCDpixel,
+                                          subfieldSizeX, subfieldSizeY,
+                                          normal=None):
 
         """Set the subfield around pixel coordinates.
         
@@ -592,23 +998,14 @@ class Simulation(object):
 
         Return
         ------
-        None
+        success: boolean, if the subfield setting was successful or not
         """
 
         raStar, decStar = rf.pixelToSkyCoordinates(self, ccdCode, xCCDpixel, yCCDpixel)
-
-        # TODO: determine nominal from the given ccdCode
-
-        nominal = True
-
-        success = self.setSubfieldAroundCoordinates(raStar, decStar,
-                                                    subfieldSizeX, subfieldSizeY, True)
-
-        if not success:
-            print ("Warning: setSubfieldAroundPixelCoordinates() " +
-                   "failed to set subField around the star.")
-
-        return
+        success = self.setSubfieldAroundSkyCoordinates(raStar, decStar,
+                                                       subfieldSizeX, subfieldSizeY,
+                                                       normal)
+        return success
 
 
 
@@ -669,11 +1066,13 @@ class Simulation(object):
 
 
 
-    def setSubfieldAroundCoordinates(self, raStar, decStar, subfieldSizeX, subfieldSizeY,
-                                     normal=True):
+    def setSubfieldAroundSkyCoordinates(self, raStar, decStar,
+                                        subfieldSizeX, subfieldSizeY,
+                                        normal=None, ccd=None,
+                                        returnInfo=False):
 
         """Set subfield around stellar coordinates
-        
+
         Set the location of the sub-field such that it is centred on the star
         with the given sky coordinates.  Depending on the CCD (in nomincal mode:
         "1", "2", "3", or "4"; in fast mode: "1F", "2F", "3F", or "4F"), the
@@ -684,64 +1083,90 @@ class Simulation(object):
 
         Notes
         -----
-        - This function calls the calculateSubfieldAroundCoordinates() function in
-          reference frames.
-        - It is assumed that the configuration parameters in the sim object contains
-          a correct (ra, dec)  of the platform, a correct (azimuth, tilt) of the telescope,
-          a valid values for the focal length, the plate scale, the pixel size, and that
-          the switch to include distortion or not is set correctly
+        - This function calls the referenceFrames.calculateSubfieldAroundCoordinates().
+        - It is assumed that the configuration parameters in the sim object contains:
+          * A correct platform pointing {alpha, delta, kappa}
+          * A correct telescope pointing {tilt, azimuth{
+          * A valid values for the {focal length, late scale, pixel size}
+          * That the switch to include distortion or not is set correctly
         - The function does not set the exposure time, nor the focal length source, etc.
 
-        Paramters
-        ---------
+        Parameters
+        ----------
         raStar : float
             Right ascension of the star [radians]
-        decStar : float 
+        decStar : float
             Declination of the star [radians]
         subfieldSizeX : int
             Width (i.e. number of columns) of the subiield [pixels]
         subfieldSizeY : int
             Height (i.e. number of rows) of the sub-field [pixels]
         normal : bool
-            True for the normal camera configuration, False for the fast cameras
+            Is depricated and should no longer be used.
+        ccd : dict
+            Dictionary with CCD configuration (see referenceFrames.CCD() dict)
+        returnInfo : bool
+            See Return section below.
 
         Return
         ------
-        bool : True if the entire subfield fit on one of the 4 (pre-defined) CCDs, 
-               False otherwise.
+        If returnInfo is False : bool
+            True if subfield fit on one of the CCDs. Else False.
+        If returnInfo is True : list
+            List containing [ccdCode [str], xCCD [intra-pixel], yCCD [intra-pixel]] 
         """
 
-        # Find out some instrumental characteristics from the sim object
+        # Find the platform pointing [rad]
 
-        raPlatform       = np.deg2rad(float(self["ObservingParameters/RApointing"]))
-        decPlatform      = np.deg2rad(float(self["ObservingParameters/DecPointing"]))
+        if self["Platform/Orientation/Source"] == "Angles":
+            alpha  = np.deg2rad(float(self["Platform/Orientation/Angles/RAPointing"]))
+            delta = np.deg2rad(float(self["Platform/Orientation/Angles/DecPointing"]))
+            kappa = np.deg2rad(self["Platform/Orientation/Angles/SolarPanelOrientation"])
+        else:
+            q_EQ2PLM = self["Platform/Orientation/Quaternion/Components"]
+            alpha, delta, kappa = rf.platformAnglesFromQuaternion(q_EQ2PLM)
 
+        # Find instrumental characteristics from the sim object
+        
         telescopeGroupID = self["Telescope/GroupID"]
         if telescopeGroupID == "Custom":
-            azimuthTelescope = np.deg2rad(float(self["Telescope/AzimuthAngle"]))
-            tiltTelescope    = np.deg2rad(float(self["Telescope/TiltAngle"]))
+            azimTelescope = np.deg2rad(float(self["Telescope/AzimuthAngle"]))
+            tiltTelescope = np.deg2rad(float(self["Telescope/TiltAngle"]))
         elif telescopeGroupID == "Fast":
-            azimuthTelescope = np.deg2rad(self["CameraGroups/AzimuthAngle"][4])
-            tiltTelescope    = np.deg2rad(self["CameraGroups/TiltAngle"][4])
+            azimTelescope = np.deg2rad(self["CameraGroups/AzimuthAngle"][4])
+            tiltTelescope = np.deg2rad(self["CameraGroups/TiltAngle"][4])
         else:
-            azimuthTelescope = np.deg2rad(self["CameraGroups/AzimuthAngle"][telescopeGroupID-1])
-            tiltTelescope    = np.deg2rad(self["CameraGroups/TiltAngle"][telescopeGroupID-1])
+            azimTelescope = np.deg2rad(self["CameraGroups/AzimuthAngle"][telescopeGroupID-1])
+            tiltTelescope = np.deg2rad(self["CameraGroups/TiltAngle"][telescopeGroupID-1])
 
-        solarPanelOrientation = np.deg2rad(float(self["Platform/SolarPanelOrientation"])) # [rad]
-        focalLength     = float(self["Camera/FocalLength/ConstantValue"]) * 1000.0        # [m]->[mm]
-        focalPlaneAngle = np.deg2rad(float(self["Camera/FocalPlaneOrientation/ConstantValue"]))
+        focalLength     = float(self["Camera/FocalLength/ConstantValue"]) * 1000.0 # [m]->[mm]
+        focalPlaneAngle =np.deg2rad(float(self["Camera/FocalPlaneOrientation/ConstantValue"]))
         pixelSize       = float(self["CCD/PixelSize"])
+        normalCamera    = self["Telescope/GroupID"] != "Fast"
 
-        # If the psf is MappedFromFile we need to include mapped field distortion
+        # TODO This should be removed in the next major release, together with the normal
+        #      argument in this function.
+        
+        if normal is not None:
+            warnings.warn("\nThe optional argument 'normal' is depricated! It is now " +
+                          "derived from the value of 'Simulation[Telescope/GroupID]'.",
+                          category=DeprecationWarning, stacklevel=2)
+            if not normal == normalCamera:
+                warnings.warn("\nThe value for the argument 'normal' is not consistent with" +
+                              " the one specified in the 'Simulation[Telescope/GroupID]'. " +
+                              "This function will use the specified normal value, but keep " +
+                              "in mind that this is different from value in the inputfile.",
+                              category=DeprecationWarning, stacklevel=2)
+                normalCamera = normal
+                
+        # If the PSF is MappedFromFile we need to include mapped field distortion
 
         if self["PSF/Model"] == "MappedFromFile":
             includeFieldDistortion = True
             mappedDistortion       = True
             pathToPsfFile          = self["PSF/MappedFromFile/Filename"]
             distortionCoefficients = None
-        elif (self["Camera/IncludeFieldDistortion"] == "yes" or
-              self["Camera/IncludeFieldDistortion"] == "1"   or
-              self["Camera/IncludeFieldDistortion"] == True):
+        elif self["Camera/IncludeFieldDistortion"] in self.true:
             includeFieldDistortion = True
             mappedDistortion       = False
             pathToPsfFile          = None
@@ -751,64 +1176,143 @@ class Simulation(object):
             mappedDistortion       = False
             pathToPsfFile          = None
             distortionCoefficients = None
-
+            
         # Compute the position of the subfield. xPix and yPix are the CCD coordinates
         # of the star, given a 4510x4510 CCD [colNumber, rowNumber]. The function below
         # also checks if the subfield fits entirely on the CCD. If not: ccdCode is None.
 
-        ccdCode, xPix, yPix = rf.calculateSubfieldAroundCoordinates(subfieldSizeX, subfieldSizeY,
-                                                                    raStar, decStar,
-                                                                    raPlatform, decPlatform,
-                                                                    solarPanelOrientation,
-                                                                    tiltTelescope, azimuthTelescope,
-                                                                    focalPlaneAngle,
-                                                                    focalLength, pixelSize,
-                                                                    includeFieldDistortion, normal,
-                                                                    mappedDistortion,
-                                                                    distortionCoefficients,
-                                                                    pathToPsfFile)
-        if ccdCode == None:
-            return False
-
-        CCDSizeX         = rf.CCD[ccdCode]["Ncols"]
-        CCDSizeY         = rf.CCD[ccdCode]["Nrows"]
-        CCDOriginOffsetX = rf.CCD[ccdCode]["zeroPointXmm"]
-        CCDOriginOffsetY = rf.CCD[ccdCode]["zeroPointYmm"]
-        CCDOrientation   = rf.CCD[ccdCode]["angle"]
+        if ccd is None: ccd = rf.CCD()
+        
+        data = rf.calculateSubfieldAroundCoordinates(
+            subfieldSizeX, subfieldSizeY,
+            raStar, decStar,
+            alpha, delta, kappa,
+            tiltTelescope, azimTelescope,
+            focalPlaneAngle, focalLength, pixelSize,
+            includeFieldDistortion, normalCamera,
+            mappedDistortion, distortionCoefficients,
+            pathToPsfFile, ccd=ccd, returnFPA=returnInfo,
+        )
+        
+        if data[0] == None:
+            if returnInfo:
+                return None, None, None, None, None
+            else:
+                return False
+        else:
+            ccdCode = data[0]
+            xCCD    = data[1]
+            yCCD    = data[2]
+            if returnInfo:
+                xFP = data[3]
+                yFP = data[4]
 
         # If we arrive here, there is no problem accommodating the entire sufield on the CCD
 
-        self["CCD/Position"]      = str(ccdCode)
-        self["CCD/OriginOffsetX"] = str(CCDOriginOffsetX)
-        self["CCD/OriginOffsetY"] = str(CCDOriginOffsetY)
-        self["CCD/Orientation"]   = str(np.rad2deg(CCDOrientation))
+        self["CCD/Position"] = str(ccdCode)
 
-        self["CCD/NumColumns"] = CCDSizeX
-        self["CCD/NumRows"]    = CCDSizeY
+        # Drop suffix for F-CAM (1F, 2F,.. -> 1, 2,..)
+        
+        if not normalCamera:
+            ccdCode = ccdCode[0]
+        
+        # Alter CCD geometry if requested
+        
+        if self["CCD/Position"] != "Custom":
+            CCDOriginOffsetX = ccd[ccdCode]["zeroPointXmm"]
+            CCDOriginOffsetY = ccd[ccdCode]["zeroPointYmm"]
+            CCDOrientation   = ccd[ccdCode]["angle"]
+            CCDSizeX         = ccd[ccdCode]["Ncols"]
+            CCDSizeY         = ccd[ccdCode]["Nrows"]
+            self["CCD/OriginOffsetX"] = str(CCDOriginOffsetX)
+            self["CCD/OriginOffsetY"] = str(CCDOriginOffsetY)
+            self["CCD/Orientation"]   = str(np.rad2deg(CCDOrientation))
+            self["CCD/NumColumns"]    = CCDSizeX
+            self["CCD/NumRows"]       = CCDSizeY
+
+        self["Telescope/AzimuthAngle"] = np.rad2deg(azimTelescope)
+        self["Telescope/TiltAngle"]    = np.rad2deg(tiltTelescope)
 
         if telescopeGroupID == "Fast":
             self["CCD/FirstRowExposed"] = str(2255)
         else:
             self["CCD/FirstRowExposed"] = str(0)
 
-        self["SubField/ZeroPointRow"]    = str(yPix - int(subfieldSizeY/2))
-        self["SubField/ZeroPointColumn"] = str(xPix - int(subfieldSizeX/2))
         self["SubField/NumRows"]    = str(subfieldSizeY)
         self["SubField/NumColumns"] = str(subfieldSizeX)
+        
+        # Secure that the target centrally for even-pixel subfields
 
-        self["Telescope/AzimuthAngle"] = np.rad2deg(azimuthTelescope)
-        self["Telescope/TiltAngle"]    = np.rad2deg(tiltTelescope)
+        dy = yCCD - int(yCCD)
+        dx = xCCD - int(xCCD)
+
+        if (subfieldSizeY % 2 == 0):
+            if dy >= 0.5:
+                subfieldSizeY -= 1
+
+        if (subfieldSizeX % 2 == 0):
+            if dx >= 0.5:
+                subfieldSizeX -= 1
+
+        self["SubField/ZeroPointRow"]    = str(int(yCCD) - int(subfieldSizeY/2))
+        self["SubField/ZeroPointColumn"] = str(int(xCCD) - int(subfieldSizeX/2))
 
         # That's it
+        
+        if returnInfo:
+            return ccdCode, xCCD, yCCD, xFP, yFP
+        else:
+            return True
 
-        return True
 
 
 
 
+    def createStarCatalogFile(self, ra, dec, mag, starID, starCatalogFile):
 
-    def createStarCatalogFileFromPixelCoordinates(self, rows, cols, magnitudes,
-                                                  starIDs, starCatalogPath):
+        """Create a star catalogue file from equatorial coordinates.
+        
+        Create a star catalog ascii file given the equatorial coordinates 
+        (RA and Dec) of the stars. This is simple copy numpy's option to
+        save a ascii file, for the conveniece of the user.
+
+        NOTE: this function sets the stellar catalogue to the simfile object.
+
+        Paramters
+        ---------
+        ra : ndarray
+            Array with right ascensions of the stars [deg]
+        dec : ndarray
+            Array with declination of the stars [deg]
+        mag : ndarray
+            Array with Johnson V magnitudes of the stars
+        starID : ndarray
+            Array with IDs of the star (integers)
+        starCatalogPath : str
+            Path of the star catalog file that will be written.
+
+        Return
+        ------
+        A file will be saved, containing, ra, dec, and magnitude of the stars.
+        The "ObservingParameters/StarCatalogFile" tag in the yaml tree will be
+        changed to the given starCatalogPath
+        """
+
+        # Save the sky coordinates to the star catalog file
+
+        np.savetxt(starCatalogFile,
+                   np.transpose([ra, dec, mag, starID]),
+                   fmt=['%11.6f', '%11.6f', '%8.4f', '%i'])
+
+        # Set the "ObservingParameters/StarCatalogFile" tag in the yaml tree
+
+        self["ObservingParameters/StarCatalogFile"] = starCatalogFile
+
+
+
+    
+
+    def createStarCatalogFileFromPixelCoordinates(self, rows, cols, magnitudes, starIDs, starCatalogPath):
 
         """Create a star catalogue file from the pixel coordinates.
         
@@ -816,7 +1320,7 @@ class Simulation(object):
         (row and column) of the stars. This requires the orientation
         of the spacecraft, telescopes, focal plane, hence it's a member
         function of the Simulation class.
-
+        
         Paramters
         ---------
         rows : ndarray
@@ -843,6 +1347,9 @@ class Simulation(object):
         if self["Telescope/GroupID"] == "Custom":
             azimuthAngle    = np.deg2rad(self["Telescope/AzimuthAngle"])
             tiltAngle       = np.deg2rad(self["Telescope/TiltAngle"])
+        elif self["Telescope/GroupID"] == "Fast":
+            azimuthAngle    = np.deg2rad(self["CameraGroups/AzimuthAngle"][4])
+            tiltAngle       = np.deg2rad(self["CameraGroups/TiltAngle"][4])
         else:
             groupID = int(self["Telescope/GroupID"])
             azimuthAngle    = np.deg2rad(self["CameraGroups/AzimuthAngle"][groupID-1])
@@ -858,11 +1365,18 @@ class Simulation(object):
             ccdZeroPointY   = self["CCDPositions/OriginOffsetY"][ccdID-1]
             CCDangle        = np.deg2rad(self["CCDPositions/Orientation"][ccdID-1])
 
-        pixelSize       = self["CCD/PixelSize"]  # [micron]
-        raPlatform      = np.deg2rad(self["ObservingParameters/RApointing"])
-        decPlatform     = np.deg2rad(self["ObservingParameters/DecPointing"])
-        focalPlaneAngle = np.deg2rad(self["Camera/FocalPlaneOrientation/ConstantValue"])
-        focalLength     = self["Camera/FocalLength/ConstantValue"] * 1000.0  # [m] -> [mm]
+        pixelSize       = self["CCD/PixelSize"]                                                               # [micron]
+
+        if self["Platform/Orientation/Source"] == "Angles":
+            raPlatform  = np.deg2rad(float(self["Platform/Orientation/Angles/RAPointing"]))
+            decPlatform = np.deg2rad(float(self["Platform/Orientation/Angles/DecPointing"]))
+            solarPanelOrientation = np.deg2rad(float(self["Platform/Orientation/Angles/SolarPanelOrientation"]))         # [rad]
+        else:
+            q_EQ2PLM = self["Platform/Orientation/Quaternion/Components"]
+            raPlatform, decPlatform, solarPanelOrientation = rf.platformAnglesFromQuaternion(q_EQ2PLM)                   # [rad]
+
+        focalPlaneAngle = np.deg2rad(self["Camera/FocalPlaneOrientation/ConstantValue"])                      # [rad]
+        focalLength     = self["Camera/FocalLength/ConstantValue"] * 1000.0                                   # [m] -> [mm]
 
         if (self["PSF/Model"] == "MappedFromFile"):
             incldueFieldDistortion        = True
@@ -875,17 +1389,15 @@ class Simulation(object):
             inverseDistortionCoefficients = self["Camera/FieldDistortion/ConstantInverseCoefficients"]
             pathToPsfFile          = None
 
-        solarPanelOrientation = np.deg2rad(float(self["Platform/SolarPanelOrientation"]))
 
         # Convert the pixel coordinates to focal plane coordinates [mm]
 
-        xFPmm, yFPmm = rf.pixelToFocalPlaneCoordinates(cols, rows, pixelSize,
-                                                       ccdZeroPointX, ccdZeroPointY, CCDangle)
+        xFPmm, yFPmm = rf.pixelToFocalPlaneCoordinates(cols, rows, pixelSize, ccdZeroPointX, ccdZeroPointY, CCDangle)
 
         # If distortion is required in the yaml input file, distort the focal plane coordinates [mm]
         if mappedDistortion:
             for i in range(len(xFPmm)):
-                xFPmm[i], yFPmm[i] = rf.mappedDistortedToUndistortedFocalPlaneCoordinates(xFPmm[i], yFPmm[i], pathToPsfFile)
+                xFPmm[i], yFPmm[i] = rf.mappedDistortedToUndistortedFocalPlaneCoordinates(xFPmm[i], yFPmm[i], pathToPsfFile, focalLength)
 
         elif (includeFieldDistortion == "yes" or
               includeFieldDistortion == "1"   or
@@ -894,7 +1406,8 @@ class Simulation(object):
 
         # Convert the focal plane coordinates to equatorial sky coordinates [rad]
 
-        ra, dec = rf.focalPlaneToSkyCoordinates(xFPmm, yFPmm, raPlatform, decPlatform, solarPanelOrientation, tiltAngle, azimuthAngle, focalPlaneAngle, focalLength)
+        ra, dec = rf.focalPlaneToSkyCoordinates(xFPmm, yFPmm, raPlatform, decPlatform, solarPanelOrientation, tiltAngle, azimuthAngle, \
+                                                focalPlaneAngle, focalLength)
 
         # Convert sky coordinates to degrees
 
@@ -904,9 +1417,9 @@ class Simulation(object):
         # Save the sky coordinates (in [deg]) to the star catalog file
 
         myFile = open(starCatalogPath, "w")
-        myFile.write("# RA DEC Vmag starID\n")
+        myFile.write("# RA Dec Vmag starID\n")
         for n in range(len(ra)):
-            myFile.write("{0}  {1}  {2}  {3}\n".format(ra[n], dec[n], magnitudes[n], starIDs[n]))
+            myFile.write(f"{ra[n]:.6f} {dec[n]:.6f} {magnitudes[n]:.4f} {starIDs[n]}\n")
         myFile.close()
 
         # Set the "ObservingParameters/StarCatalogFile" tag in the yaml tree
@@ -917,7 +1430,7 @@ class Simulation(object):
 
 
 
-    def createPhotometryTargetFile(self, starIDs, fileName):
+    def createPhotometryFile(self, starIDs, photometryFile):
 
         """Create a photometry file list in ascii format and sets it to the YAML input.
 
@@ -942,30 +1455,105 @@ class Simulation(object):
 
         # Create photometry list file
 
-        np.savetxt(fileName, np.transpose(starIDs), delimiter=" ", fmt="%d")
+        np.savetxt(photometryFile, np.transpose(starIDs), delimiter=" ", fmt="%d")
 
-        # Set this to simulation
+        # Set this to simulation and activate photometry
 
-        self["Photometry/TargetFileName"] = fileName
-
-        # Finito!
-
-        return
+        self["Photometry/IncludePhotometry"] = True
+        self["Photometry/TargetFileName"]    = photometryFile
 
 
 
 
+        
+    def createVariableSourceFile(self, time, dmag, variableSourceFile):
 
+        """Create a variable source file of a target star.
+        
+        This function will automatically create the 'variableSourceList()' needed in order
+        for PlatoSim to include the variability.
+        The "ObservingParameters/StarCatalogFile" tag in the yaml tree will be
+        changed to the given starCatalogPath
+
+        Paramters
+        ---------
+        time : ndarray
+            Array with right ascensions of the stars [deg]
+        dmag : ndarray
+            Array with declination of the stars [deg]
+        variableSourceFile : str
+            Path of the star catalog file that will be written.
+
+        Return
+        ------
+        A file will be saved containing an ascii file with the columns
+        time and delta magnitude.
+        """
+
+        # Save the sky coordinates to the star catalog file
+
+        np.savetxt(variableSourceFile,
+                   np.transpose([time, dmag]),
+                   fmt=['%.1f', '%.6f'])       
+
+
+
+
+
+    def createVariableSourceList(self, starID, variableSourceFile, variableSourceList):
+
+        """Create a variable source file of a target star.
+        
+        NOTE: This function will automatically create the 'variableSourceList()'
+        needed in order for PlatoSim to include the variability. Furthermore, the
+        "Sky/IncludeVariableSources" tag in the YAML tree will be changed True.
+
+        Paramters
+        ---------
+        time : ndarray
+            Array with right ascensions of the stars [deg]
+        dmag : ndarray
+            Array with declination of the stars [deg]
+        variableSourceFile : str
+            Path of the star catalog file that will be written.
+
+        Return
+        ------
+        A file will be saved containing an ascii file with the columns
+        time and delta magnitude.
+        """
+
+        # Check if only a single target is requested
+        
+        if isinstance(variableSourceFile, str):
+            variableSourceFile = [variableSourceFile]
+
+        # Save the sky coordinates to the star catalog file
+        
+        with open(variableSourceList, 'w') as f:
+            for i in range(len(starID)):
+                f.write(f'{starID[i]} {variableSourceFile[i]}\n')
+
+        # Set the "Sky" tag in the yaml tree
+
+        self["Sky/IncludeVariableSources"] = True
+        self["Sky/VariableSourceList"]     = variableSourceList
+
+
+
+
+
+        
     def createDriftFile(self, quarter, fileName, model="poly", plot=False):
 
-        """Create a photometry file list in ascii format and sets it to the YAML input.
+        """Create a camera drift file in ascii format and sets it to the YAML input.
 
         Parameters
         ----------
-        starIDs : ndarray
-            Array with IDs of the star (integers)
-        fileName : str
-            Path of the photometry file that will be written.
+        quarter :
+        fileName :
+        model : 
+        plot :
 
         Return
         ------
@@ -975,23 +1563,56 @@ class Simulation(object):
         """
 
         # Create TED file
-
-        it.getTED(quarter=quarter, model=model, outfile=fileName, plot=plot)
+        
+        from platosim.noise import getTED  
+        getTED(quarter=quarter, model=model, outfile=fileName, plot=plot)
 
         # Set this to simulation
 
-        self["Telescope/UseDrift"]         = True
-        self["Telescope/UseDriftFromFile"] = True
-        self["Telescope/DriftFileName"]    = fileName
-
-        # Finito!
-
-        return
+        self["Telescope/UseDrift"]      = True
+        self["Telescope/DriftSource"]   = 'FromFile'
+        self["Telescope/DriftFileName"] = fileName
 
 
 
 
 
+    def createDetectorTemperatureFile(self, time, temp, ccdFileName):
+
+        """Create a CCD(T) file in ascii format and sets it to the YAML input.
+
+        
+        Parameters
+        ----------
+        time : ndarray
+            Time points of time series [s]
+        temp : ndarray
+            CCD temeprature values [K]
+        ccdFileName : str
+            Filename of the CCD temeprature file
+
+        Return
+        ------
+        A file will be saved, containing a column of time and CCD temperature.
+        The "CCD/TemperatureFileName" tag in the yaml tree will be changed to the
+        ccdFileName.
+
+        NOTE: PlatoSim cannot model the FEE(T) yet.
+        """
+
+        # Create TED file
+                
+        np.savetxt(ccdFileName, np.transpose([time, temp]), fmt=['%.1f', '%.6f'])
+
+        # Set this to simulation
+
+        self["CCD/TemperatureFileName"] = ccdFileName
+        self["CCD/Temperature"]         = "FromFile"
+
+
+
+
+        
     def getReadoutTime(self):
 
         """Fetch the readout time.
@@ -1039,15 +1660,17 @@ class Simulation(object):
         readoutMode = self["CCD/ReadoutMode/ReadoutMode"]
 
         if (readoutMode != "Nominal") and (readoutMode != "Partial"):
-            raise ValueError("Simulation::getReadoutTime() Unknown readout mode specification in configuration file: {0}".format(readoutMode))
+            raise ValueError("Simulation::getReadoutTime() Unknown readout mode " +
+                             f"specification in configuration file: {readoutMode}")
 
-
-        serialTransferTime       = self["CCD/SerialTransferTime"]       * 1e-9  # [ns] -> [s]
-        parallelTransferTime     = self["CCD/ParallelTransferTime"]     * 1E-6  # [micro s] -> [s]
-        parallelTransferTimeFast = self["CCD/ParallelTransferTimeFast"] * 1E-6  # [micro s] -> [s]
+        serialTransferTime       = self["CCD/SerialTransferTime"]   * 1e-9  # [ns -> s]
+        parallelTransferTime     = self["CCD/ParallelTransferTime"] * 1e-6  # [micro s -> s]
+        parallelTransferTimeFast = self["CCD/ParallelTransferTimeFast"] * 1e-6 # [micro s -> s]
 
         numColumnsBiasMap =  self["SubField/NumBiasPrescanColumns"]    # [pixels]
         numRowsSmearingMap = self["SubField/NumSmearingOverscanRows"]  # [pixels]
+        # numBiasPrescanRows = self["SubField/NumBiasPrescanRows"]       # [pixels]
+        numBiasPrescanColumns = self["SubField/NumBiasPrescanColumns"] # [pixels]
 
         # Both detector halves are read out simultaneously
         # -> columns read out by the FEE:
@@ -1055,7 +1678,7 @@ class Simulation(object):
         # 		- serial pre-scan
         # 		- (serial over-scan)
 
-        numColumnsReadout = numColumns / 2 + numColumnsBiasMap # + numRowsSerialOverScan
+        numColumnsReadout = numColumns / 2 + numColumnsBiasMap + numBiasPrescanColumns
 
         # How many rows will be actually read out by the FEE?
         # 	- nominal mode: image area + parallel over-scan
@@ -1109,7 +1732,7 @@ class Simulation(object):
 
                 # No rows dumped
 
-                numRowsDump = 0;
+                numRowsDump = 0
 
             # Partial readout
 
@@ -1134,30 +1757,35 @@ class Simulation(object):
 
 
 
-    def getStarsWithinCameraGroup(self, raPF, decPF, ra, dec, kappa=-8,
-                                  camGroup=1, quarter=1, sizeSubfield=6):
+    def getStarsWithinCameraGroup(self, ra, dec, alpha, delta, kappa,
+                                  cameraGroup=1, quarter=1, radiusFOV=False,
+                                  subfieldSize=6):
 
         """Fetch all stars within a camera group.
 
-        This function determines if any star from a catalogue is within the FOV of a specific
-        PLATO camera group.
+        This function determines if any star from a catalogue is within
+        the FOV of a specific PLATO camera group.
 
         TODO: Could be implemented in a better and faster manner!
 
         Parameters
         ----------
-        camGroup : int [1, 2, 3, 4]
-            N-CAM camera group ID
-        raPF : float
-            Right acsension of pointing field [deg]
-        decPF : float
-            Declination of pointing field [deg]
-        ra : list, array
+        ra : list, ndarray
             Right ascension of stars to be checked against [deg]
-        dec : list, tuple, array
+        dec : list, ndarray
             Declination of stars to be checked against [deg]
+        alpha : float
+            Right acsension of pointing field [deg]
+        delta : float
+            Declination of pointing field [deg]
         kappa : float
             Rotation of the platform [deg]
+        camGroup : int
+            N-CAM camera group ID [1, 2, 3, 4]
+        quarter : float
+            Mission quarter number (starting from 1)
+        subfieldSize : int
+            Number of pixels to place retangular subfield
 
         Return
         ------
@@ -1167,55 +1795,67 @@ class Simulation(object):
            Distance of each from the camera's optical axis [mm]
         """
 
-        # Telescope config
+        # Camera information
 
-        raPlatformDeg  = self["ObservingParameters/RApointing"]  = raPF   # [deg]
-        decPlatformDeg = self["ObservingParameters/DecPointing"] = decPF  # [deg]
+        focalLength     = float(self["Camera/FocalLength/ConstantValue"]) * 1000.0  # [mm]
+        focalPlaneAngle = np.deg2rad(float(self["Camera/FocalPlaneOrientation/ConstantValue"]))
 
-        raPlatformRad  = np.deg2rad(raPlatformDeg)   # [rad]
-        decPlatformRad = np.deg2rad(decPlatformDeg)  # [rad]
+        # Platform orientation [deg]
 
-        focalLength      = float(self["Camera/FocalLength/ConstantValue"]) * 1000.0  # [m] -> [mm]
-        focalPlaneAngle  = np.deg2rad(float(self["Camera/FocalPlaneOrientation/ConstantValue"]))
+        alphaPlatformDeg = self["Platform/Orientation/Angles/RAPointing"]  = alpha
+        deltaPlatformDeg = self["Platform/Orientation/Angles/DecPointing"] = delta
+        kappaPlatformDeg = self["Platform/Orientation/Angles/SolarPanelOrientation"] = ut.getSolarPanelOrientation(kappa, quarter)
 
-        solarPanelOrientation = self["Platform/SolarPanelOrientation"] = math.fmod(quarter * 90. - kappa, 360.)
-        solarPanelOrientation = np.deg2rad(float(solarPanelOrientation))
-
-        raTargetsRad  = np.deg2rad(ra)   # [rad]
-        decTargetsRad = np.deg2rad(dec)  # [rad]
-
+        # Convert coordinates to radians
+        
+        raTargetsRad  = np.deg2rad(ra)
+        decTargetsRad = np.deg2rad(dec)
+        alphaPlatformRad = np.deg2rad(alphaPlatformDeg)
+        deltaPlatformRad = np.deg2rad(deltaPlatformDeg)
+        kappaPlatformRad = np.deg2rad(float(kappaPlatformDeg))
+        
         # Loop over each star for this cam-group
 
-        self["Telescope/GroupID"] = camGroup
-        azimuthTelescope = np.deg2rad(self["CameraGroups/AzimuthAngle"][camGroup-1])
-        tiltTelescope    = np.deg2rad(self["CameraGroups/TiltAngle"][camGroup-1])
+        self["Telescope/GroupID"] = cameraGroup
+        tiltGroup = np.deg2rad(self["CameraGroups/TiltAngle"][cameraGroup-1])
+        azimGroup = np.deg2rad(self["CameraGroups/AzimuthAngle"][cameraGroup-1])
 
+        # Select how large the FOV should be [deg -> rad]
+
+        if not radiusFOV:
+            radiusFOV = self['CCD/RelativeTransmissivity/RadiusFOV']
+        radiusFOV = np.deg2rad(radiusFOV)
+            
+        # Start loop over each star
+        # Check 1: if star in located on one of the 4 CCDs
+        # Check 2: if star is within the "radius" from the OA
+        
         dexGroup   = np.zeros(len(ra), dtype=bool)
         distanceOA = np.zeros(len(ra))
 
         for i in range(len(ra)):
-
-            subfieldIsOnCCD = self.setSubfieldAroundCoordinates(raTargetsRad[i], decTargetsRad[i],
-                                                                sizeSubfield, sizeSubfield,
-                                                                normal=True)
+            subfieldIsOnCCD = self.setSubfieldAroundSkyCoordinates(raTargetsRad[i],
+                                                                   decTargetsRad[i],
+                                                                   subfieldSize,
+                                                                   subfieldSize)
             if subfieldIsOnCCD:
-
-                xFP, yFP = rf.skyToFocalPlaneCoordinates(raTargetsRad[i], decTargetsRad[i],
-                                                         raPlatformRad, decPlatformRad,
-                                                         solarPanelOrientation,
-                                                         tiltTelescope, azimuthTelescope,
+                xFP, yFP = rf.skyToFocalPlaneCoordinates(raTargetsRad[i],
+                                                         decTargetsRad[i],
+                                                         alphaPlatformRad,
+                                                         deltaPlatformRad,
+                                                         kappaPlatformRad,
+                                                         tiltGroup, azimGroup,
                                                          focalPlaneAngle, focalLength)
-
-                distanceOA[i] = np.rad2deg(rf.gnomonicRadialDistanceFromOpticalAxis(xFP, yFP,
-                                                                                    focalLength))
-
-                if distanceOA[i] < self['CCD/RelativeTransmissivity/RadiusFOV']:
+                
+                distanceOA[i] = rf.gnomonicRadialDistanceFromOpticalAxis(xFP, yFP,
+                                                                         focalLength)
+                if distanceOA[i] < radiusFOV:
                     dexGroup[i] = True
                 else:
                     dexGroup[i] = False
 
-        # Finito!
-
+        # Return parameters
+        
         return dexGroup, distanceOA
 
 
@@ -1239,7 +1879,7 @@ class Simulation(object):
         ra : list, array
             Right ascension of stars to be checked against [deg]
         dec : list, tuple, array
-            Declination of stars to be checked against [deg]
+2            Declination of stars to be checked against [deg]
 
         Return
         ------
@@ -1249,30 +1889,40 @@ class Simulation(object):
            Subpixel position of star in x (row)
         yCCD : float32
            Subpixel position of star in y (column)
+
+        Warning:
+        --------
+        This functions computes its own version of the solarPanelOrientation, but it does
+        NOT change the corresponding value in the yaml config.
         """
 
         # Telescope config
 
-        raPlatformDeg  = self["ObservingParameters/RApointing"]  = raPF   # [deg]
-        decPlatformDeg = self["ObservingParameters/DecPointing"] = decPF  # [deg]
+        if self["Platform/Orientation/Source"] == "Angles":
+            raPlatform  = np.deg2rad(float(self["Platform/Orientation/Angles/RAPointing"]))
+            decPlatform = np.deg2rad(float(self["Platform/Orientation/Angles/DecPointing"]))
+            solarPanelOrientation = np.deg2rad(float(self["Platform/Orientation/Angles/SolarPanelOrientation"]))         # [rad]
+        else:
+            q_EQ2PLM = self["Platform/Orientation/Quaternion/Components"]
+            raPlatform, decPlatform, solarPanelOrientation = rf.platformAnglesFromQuaternion(q_EQ2PLM)                   # [rad]
 
-        raPlatformRad  = np.deg2rad(raPlatformDeg)   # [rad]
-        decPlatformRad = np.deg2rad(decPlatformDeg)  # [rad]
 
         focalLength      = float(self["Camera/FocalLength/ConstantValue"]) * 1000.0  # [m] -> [mm]
         focalPlaneAngle  = np.deg2rad(float(self["Camera/FocalPlaneOrientation/ConstantValue"]))
 
-        solarPanelOrientation = self["Platform/SolarPanelOrientation"] = math.fmod(quarter*90.,360.)
-        solarPanelOrientationRad = np.deg2rad(float(solarPanelOrientation))
+        # NOTE: with the following line the value for the solarPanelOrientation is no longer consistent
+        #       with the value in the yaml file.
 
-        raTargetsRad  = np.deg2rad(ra)   # [rad]
-        decTargetsRad = np.deg2rad(dec)  # [rad]
+        solarPanelOrientation = np.deg2rad(math.fmod(quarter * 90., 360.) - 6)
+
+        raTargets  = np.deg2rad(ra)                               # [rad]
+        decTargets = np.deg2rad(dec)                              # [rad]
 
         # Loop over each star for this cam-group
 
         self["Telescope/GroupID"] = camGroup
-        azimuthTelescopeRad = np.deg2rad(self["CameraGroups/AzimuthAngle"][camGroup-1])
-        tiltTelescopeRad    = np.deg2rad(self["CameraGroups/TiltAngle"][camGroup-1])
+        azimuthTelescope = np.deg2rad(self["CameraGroups/AzimuthAngle"][camGroup-1])
+        tiltTelescope    = np.deg2rad(self["CameraGroups/TiltAngle"][camGroup-1])
 
         # CCD properties
 
@@ -1284,8 +1934,7 @@ class Simulation(object):
 
         for i in range(len(ra)):
 
-            subfieldIsOnCCD = self.setSubfieldAroundCoordinates(raTargetsRad[i], decTargetsRad[i],
-                                                                6, 6, normal=True)
+            subfieldIsOnCCD = self.setSubfieldAroundSkyCoordinates(raTargets[i], decTargets[i], 6, 6)
             if subfieldIsOnCCD:
 
                 # Fetch CCD code and pixel coordinates (account for field distortion in included)
@@ -1303,13 +1952,13 @@ class Simulation(object):
                     mappedDistortion = False
                     distortionCoefficients = False
 
-                out = rf.getCCDandPixelCoordinates(raTargetsRad[i],
-                                                   decTargetsRad[i],
-                                                   raPlatformRad,
-                                                   decPlatformRad,
-                                                   solarPanelOrientationRad,
-                                                   tiltTelescopeRad,
-                                                   azimuthTelescopeRad,
+                out = rf.getCCDandPixelCoordinates(raTargets[i],
+                                                   decTargets[i],
+                                                   raPlatform,
+                                                   decPlatform,
+                                                   solarPanelOrientation,
+                                                   tiltTelescope,
+                                                   azimuthTelescope,
                                                    focalPlaneAngle,
                                                    focalLength,
                                                    pixelSize,
@@ -1322,3 +1971,4 @@ class Simulation(object):
         # That's it!
         
         return ccdCode, xCCD, yCCD
+

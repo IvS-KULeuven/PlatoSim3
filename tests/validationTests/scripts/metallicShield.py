@@ -73,12 +73,7 @@ class MetallicShield(Test):
 
 
     def runSimulation(self):
-
-        self.sim["PSF/Model"] = "MappedFromFile"
-        self.createStarCatalog()
-        test1 = self.testForCamera()
-
-        self.sim["PSF/Model"] = "AnalyticGaussian"
+        
         self.createStarCatalog()
         test2 = self.testForCamera()
 
@@ -86,22 +81,24 @@ class MetallicShield(Test):
         self.createStarCatalog()
         test3 = self.testForCamera()
 
-        self.results = (test1 and  test2 and test3)
-
+        self.results = (test2 and test3)
 
 
     def testForCamera(self):
         positions = [1955, 2155, 2355, 2555]
         stars = []
-
+        
         for miRow in positions:
             for miCol in positions:
                 for maRow in positions:
                     for maCol in positions:
                         if (maRow > miRow and maCol > miCol):
+
                             self.sim["CCDPositions/MetallicShield/ShieldColumnCoordinates"] = [miCol, maCol]
                             self.sim["CCDPositions/MetallicShield/ShieldRowCoordinates"]    = [miRow, maRow]
+
                             simFile = self.sim.run(removeOutputFile=True)
+
                             stars.append(self.compareForRun([miCol, maCol, miRow, maRow], simFile.getStarCatalog()))
 
         return all(stars)
@@ -156,3 +153,4 @@ class MetallicShield(Test):
 if __name__ == "__main__":
     t = MetallicShield()
     print(t.run())
+

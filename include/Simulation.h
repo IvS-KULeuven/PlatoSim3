@@ -68,7 +68,8 @@ class Simulation
         string jitterSource;
         bool includeFieldDistortion;
         bool useDrift;
-        bool useDriftFromFile;
+  // bool useDriftFromFile;
+        string driftSource;
         bool useFeeTemperatureFromFile;
         bool useFeeNominalTemperature;
         bool useDetectorTemperatureFromFile;

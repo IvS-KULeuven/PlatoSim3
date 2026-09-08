@@ -14,7 +14,7 @@ import numpy as np
 
 class JitterOnCCDs(Test):
     """
-    This test is designed to test that the jitter that is observed is independent of the CCD. The test simulates one star on the center of a 
+    This test is designed to test that the jitter that is observed is independent of the CCD. The test simulates one star on the center of a
     CCD for the different CCDs, and checks that the observed jitter at a certain time is independent of the CCD.
     """
 
@@ -30,6 +30,8 @@ class JitterOnCCDs(Test):
         self.sim["Platform/UseJitter"]               = "yes"
         self.sim["Platform/JitterSource"]            = "FromRedNoise"
         self.sim["ObservingParameters/CycleTime"]    = 25
+
+        self.sim["Platform/JitterTimeScale"] = 250
 
 
 
@@ -57,7 +59,7 @@ class JitterOnCCDs(Test):
 
             # Get the jitter from the simulation
             simFile = self.sim.run(removeOutputFile = True)
-            yaw, pitch, roll, time = simFile.getYawPitchRoll(True)
+            time, yaw, pitch, roll = simFile.getPlatformYawPitchRoll(getTime=True)
             self.jitter[CCD] = [time, yaw, pitch, roll]
 
 

@@ -88,24 +88,19 @@ TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
     modifications, and in Source or Object form, provided that You
     meet the following conditions:
 
-    (a) The recipient of a copy of the Work or Derivative Works
-        must be a member of the Plato Mission Consortium and agreed
-        to and signed the non-disclosure agreement that comes with
-        this membership.
-        
-    (b) You must give any other recipients of the Work or
+    (a) You must give any other recipients of the Work or
         Derivative Works a copy of this License; and
 
-    (c) You must cause any modified files to carry prominent notices
+    (b) You must cause any modified files to carry prominent notices
         stating that You changed the files; and
 
-    (d) You must retain, in the Source form of any Derivative Works
+    (c) You must retain, in the Source form of any Derivative Works
         that You distribute, all copyright, patent, trademark, and
         attribution notices from the Source form of the Work,
         excluding those notices that do not pertain to any part of
         the Derivative Works; and
 
-    (e) If the Work includes a "NOTICE" text file as part of its
+    (d) If the Work includes a "NOTICE" text file as part of its
         distribution, then any Derivative Works that You distribute must
         include a readable copy of the attribution notices contained
         within such NOTICE file, excluding those notices that do not
@@ -132,7 +127,7 @@ TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
 5. Publications. Any publication that contains a result that was wholly
     or partially produced by this Work shall contain a reference to the 
     following article published in Astronomy & Astrophysics: 
-        Marcos-Arenal P. et al., 2014, A&A 566, p. A92.
+        Jannsen et al., 2024, Astronomy & Astrophysics, Volume 681, A18
     
 6. Submission of Contributions. Unless You explicitly state otherwise,
     any Contribution intentionally submitted for inclusion in the Work

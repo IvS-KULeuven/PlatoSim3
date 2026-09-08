@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 """
 Auxiliary scripts to facilitate the validation and verification of PlatoSim:
     - switch off all effects for the PlatoSim simulations
@@ -5,10 +7,15 @@ Auxiliary scripts to facilitate the validation and verification of PlatoSim:
     - absolute stellar aberration
 """
 
-from astropy.coordinates import SkyCoord
+# Built-in
 from math import sin, cos, radians, pow
+
+# PlatoSim standard
 import numpy as np
 from scipy import optimize
+from astropy.coordinates import SkyCoord
+
+
 
 def switchOffAllEffects(sim):
 
@@ -38,6 +45,9 @@ def switchOffAllEffects(sim):
                 - full-well saturation (blooming);
                 - digital saturation;
                 - quantisation.
+                - non-linear gain
+                - straylight
+                - bad pixels
 
     INPUT:
         - sim: Simulation for which to switch off all effects.
@@ -45,6 +55,9 @@ def switchOffAllEffects(sim):
     OUTPUT:
         - Simulation with all effects switched off.
     """
+
+    # Straylight
+    sim["Sky/StrayLight/IncludeStrayLight"] = "no"
 
     # Sky parameters
 
@@ -92,6 +105,8 @@ def switchOffAllEffects(sim):
     sim["CCD/IncludeFullWellSaturation"] = "no"
     sim["CCD/IncludeDigitalSaturation"] = "no"
     sim["CCD/IncludeQuantisation"] = "no"
+    sim["CCD/IncludeGainNonlinearity"] = "no"
+    sim["CCD/BadPixelMap/includeBadPixelMap"] = "no"
 
     return sim
 

@@ -29,6 +29,7 @@ class ConfigurationParameters
     
 
         vector<string> getKeys(const string nodeName);
+        bool nodeExists(const string nodeName);
         bool getBoolean(const string &);
         int getInteger(const string &);
         unsigned int getUnsignedInteger(const string &);

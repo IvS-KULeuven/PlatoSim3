@@ -7,7 +7,7 @@ import pandas as pd
 from test                import Test
 from math                import degrees, pow, sqrt
 from platosim.validation import fitGaussian2D, gaussian2D
-from scipy.ndimage.interpolation import rotate
+from scipy.ndimage       import rotate
 import matplotlib.pyplot as plt
 
 
@@ -169,7 +169,6 @@ class MappedGaussianPSF(Test):
         param  = np.array(param[-1:-3:-1])
         param2 = np.array(param2[-1:-3:-1])
 
-        print(param2, param)
         difference = (param2 - param)
         return np.all(difference <= 0)
 

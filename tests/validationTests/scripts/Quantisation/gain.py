@@ -30,7 +30,7 @@ class Gain(Test):
         cycleTime = self.sim["ObservingParameters/CycleTime"]
 
         # Make sure there are no stars on the subfield.
-        self.sim["ObservingParameters/DecPointing"] = - self.sim["ObservingParameters/DecPointing"]
+        self.sim["Platform/Orientation/Angles/DecPointing"] = -self.sim["Platform/Orientation/Angles/DecPointing"]
 
         # Create the termperature file for the FEE and the CCD and points to the right directory. 
         time = np.array([0, 100*cycleTime])

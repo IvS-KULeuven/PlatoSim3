@@ -9,7 +9,7 @@ import os,shutil,subprocess
 
 # Specify the dependency package name
 
-packageName = "hdf5-1.12.0"
+packageName = "hdf5-1.14.6"
 
 # Specify build and install folders
 
@@ -43,11 +43,15 @@ installProcedure = "cd {build};                                     \
                     tar -xzvf {package}.tar.gz;                     \
                     cd {package};                                   \
                     ./configure --prefix={install} --enable-cxx;    \
-                    make;                                           \
-                    make install".format(build=buildDir, package=packageName, install=installDir)
+                    make -j {num_threads};                          \
+                    make install".format(build=buildDir, 
+                                         package=packageName, 
+                                         install=installDir,
+                                         num_threads=os.environ.get("INSTALL_NUM_THREADS"))
 
-subprocess.call(installProcedure, shell=True)
-
+process = subprocess.run(installProcedure, shell=True)
+if not process.returncode == 0:
+    exit(1)
 
 # After installation in the install folder, remove the decompressed package folder in the build dir
 # so that only the .tgz file remains in the Downloads folder.

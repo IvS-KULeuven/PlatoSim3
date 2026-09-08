@@ -2,7 +2,6 @@ import platosim.referenceFrames as rf
 import numpy                    as np
 
 from test                import Test
-from math                import degrees
 from platosim.validation import fitGaussian1D
 
 
@@ -96,9 +95,8 @@ class AnalyticGaussianPSF(Test):
         xParameters = [abs(fitGaussian1D(x, np.max(x)-np.min(x), 200, 25)[-1]) for x in xSpread]
         yParameters = [abs(fitGaussian1D(y, np.max(y)-np.min(y), 200, 5)[-1])  for y in ySpread]
 
-        focalPlane  = [rf.pixelToFocalPlaneCoordinates(x, y, pixelSize, -1.3, 82.48, 3*np.pi / 2) for x, y in zip(xPos, yPos)]
-        gnomic      = [rf.gnomonicRadialDistanceFromOpticalAxis(xFP, yFP, focalLength) for xFP, yFP in focalPlane]
-        gnomic      = np.array([degrees(gnom) for gnom in gnomic])
+        xFP, yFP = rf.pixelToFocalPlaneCoordinates(xPos, yPos, pixelSize, -1.3, 82.48, 3/2*np.pi)
+        gnomic   = np.rad2deg(rf.gnomonicRadialDistanceFromOpticalAxis(xFP, yFP, focalLength))
 
         # The fitted sigma is then compared versus a linear extrapolition between sigma0 and sigma18. The test passes when RMS
         # difference between these two is smaller then 0.01.

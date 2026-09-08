@@ -1,3 +1,0 @@
-# Star IDs for which we want a photometric light curve
-10
-30

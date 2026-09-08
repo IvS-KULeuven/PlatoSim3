@@ -53,11 +53,10 @@ Telescope::Telescope(ConfigurationParameters &configParams, HDF5File &hdf5File, 
     const double y = opticalAxisEQ(1);
     const double z = opticalAxisEQ(2);
  
-    const double r = sqrt(x*x+y*y+z*z);
-    currentDeltaOpticalAxis = PI / 2.0 - acos(z/r);                               // [rad]
+    const double r = sqrt(x*x + y*y + z*z);
+    currentDeltaOpticalAxis = PI / 2.0 - acos(z/r);                               // Dec is measured from equator, not North Pole.  [rad]
     currentAlphaOpticalAxis = atan2(y, x);                                        // [rad]
     if (currentAlphaOpticalAxis < 0.0) currentAlphaOpticalAxis += 2 * PI; 
-
 }
 
 
@@ -245,7 +244,7 @@ void Telescope::updateTelescopeOrientation(double time)
         if (time == historyTime.back())
         {
             Log.debug("Telescope: updateTelescopeOrientation: coordinates up-to-date for requested time " + to_string(time));
-            Log.info("Telescope: At time " + to_string(time) + ": (RA, dec) = (" 
+            Log.debug("Telescope: At time " + to_string(time) + ": (RA, dec) = (" 
                                            + to_string(rad2deg(currentAlphaOpticalAxis)) + ", " 
                                            + to_string(rad2deg(currentDeltaOpticalAxis)) + ")");
             return;
@@ -259,6 +258,7 @@ void Telescope::updateTelescopeOrientation(double time)
 
     // Get the rotation matrix to transform the spacecraft coordinates of the (drifted) optical axis 
     // to equatorial coordinates, taking into account that the platform itself may have jittered meanwhile.
+
     platform.updatePlatformOrientation(time);
     arma::mat rotSC2EQ = platform.getJitteredSpacecraftToEquatorialRotationMatrix();
 
@@ -277,7 +277,7 @@ void Telescope::updateTelescopeOrientation(double time)
 
         tie(yaw, pitch, roll) = driftGenerator.getNextYawPitchRoll(time);
 
-        Log.debug("Telescope: At time " + to_string(time) + ": (yaw, pitch, roll) = (" 
+        Log.debug("Telescope: updateTelescopeOrientation(): At time " + to_string(time) + ": (yaw, pitch, roll) = (" 
                                         + to_string(rad2deg(yaw)*3600.) + ", " 
                                         + to_string(rad2deg(pitch)*3600.) + ", " 
                                         + to_string(rad2deg(roll)*3600.) + ") arcsec");
@@ -300,7 +300,7 @@ void Telescope::updateTelescopeOrientation(double time)
     }
     else
     {
-        Log.info("Telescope: No drift, telescope (yaw, pitch, roll) = (0.0, 0.0, 0.0)");
+        Log.info("Telescope: updateTelescopeOrientation(): No drift, telescope (yaw, pitch, roll) = (0.0, 0.0, 0.0)");
         yaw = 0.0;
         pitch = 0.0;
         roll = 0.0;
@@ -328,7 +328,7 @@ void Telescope::updateTelescopeOrientation(double time)
     if (currentAlphaOpticalAxis < 0.0) currentAlphaOpticalAxis += 2 * PI; 
 
 
-    Log.debug("Telescope: At time " + to_string(time) + ": (RA, dec) = (" 
+    Log.debug("Telescope: updateTelescopeOrientation(): at time " + to_string(time) + ": (RA, dec) = (" 
                                    + to_string(rad2deg(currentAlphaOpticalAxis)) + ", " 
                                    + to_string(rad2deg(currentDeltaOpticalAxis)) + ")");
 
@@ -449,18 +449,18 @@ arma::mat Telescope::getUndriftedTelescopeToPlatformRotationMatrix()
     // Rotating over an azimuth angle around the Z-axis of the platform
 
     arma::mat rotAzimuth;
-    rotAzimuth << cos(originalAzimuthAngle) << -sin(originalAzimuthAngle) << 0 << arma::endr
-               << sin(originalAzimuthAngle) <<  cos(originalAzimuthAngle) << 0 << arma::endr
-               <<          0                <<          0                 << 1 << arma::endr;
+    rotAzimuth <<  cos(originalAzimuthAngle) << sin(originalAzimuthAngle) << 0 << arma::endr
+               << -sin(originalAzimuthAngle) << cos(originalAzimuthAngle) << 0 << arma::endr
+               <<           0                <<          0                << 1 << arma::endr;
 
-    // Rotating over a tilt angle around teh Y-axis of the telescope
+    // Rotating over a tilt angle around the Y-axis of the telescope
 
     arma::mat rotTilt;
-    rotTilt <<  cos(originalTiltAngle)  << 0 << sin(originalTiltAngle)  << arma::endr
-            <<           0              << 1 <<            0            << arma::endr
-            <<  -sin(originalTiltAngle) << 0 << cos(originalTiltAngle)  << arma::endr;
+    rotTilt <<  cos(originalTiltAngle)  << 0 << -sin(originalTiltAngle)  << arma::endr
+            <<            0             << 1 <<             0            << arma::endr
+            <<  sin(originalTiltAngle)  << 0 <<  cos(originalTiltAngle)  << arma::endr;
 
-    return rotAzimuth * rotTilt * rotAzimuth.t();
+    return rotAzimuth.t() * rotTilt.t() * rotAzimuth;
 }
 
 

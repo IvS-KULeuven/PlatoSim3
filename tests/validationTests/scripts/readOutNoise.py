@@ -27,7 +27,7 @@ class ReadoutNoise(Test):
         self.sim["SubField/NumColumns"] = 1000
 
         # Make sure no stars are located on the subfield
-        self.sim["ObservingParameters/DecPointing"] = -self.sim["ObservingParameters/DecPointing"]
+        self.sim["Platform/Orientation/Angles/DecPointing"] = -self.sim["Platform/Orientation/Angles/DecPointing"]
         
 
     def runSimulation(self):

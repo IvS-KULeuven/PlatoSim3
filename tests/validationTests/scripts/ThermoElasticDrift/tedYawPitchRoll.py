@@ -30,7 +30,7 @@ class TedYawPitchRoll(Test):
         self.numExposures                                 = 250
         self.sim["ObservingParameters/NumExposures"]      = self.numExposures
         self.sim["Telescope/UseDrift"]                    = "yes"
-        self.sim["Telescope/UseDriftFromFile"]            = "no"
+        self.sim["Telescope/DriftSource"]                 = "FromRedNoise"
         self.sim["ControlHDF5Content/WriteStarPositions"] = "yes"
 
         # Pick a random point in the sub field and write it to a star catalog.

@@ -26,7 +26,7 @@ class Short2013CTI(Test):
         # We simulate one exposure at the end of the life of the simulation so that CTI is higher 
         self.sim["ObservingParameters/NumExposures"] = 1
         self.sim["ObservingParameters/BeginExposureNr"] = 8000000
-        self.sim["Sky/SkyBackground"] = 100
+        self.sim["Sky/SkyBackground/BackgroundValue"] = 100
 
         self.numRows    = 4500
         self.numColumns = 100

@@ -1,10 +1,11 @@
 # cmake file to build PlatoSim3
-# 
+#
 # Usage: ($ mkdir build)
 #        $ cd build
-#        $ cmake ..  (alternatively: cmake -D CMAKE_CXX_COMPILER=/usr/bin/clang++ .. on mac OSX)
+#        $ cmake ..  (alternatively: cmake -D CMAKE_EXPORT_COMPILE_COMMANDS=1 -D CMAKE_CXX_COMPILER=/usr/bin/clang++ .. on mac OSX)
+#                    (               mv compile_commands.json ../.                                                                )
 #        ($ make clean)
-#        $ make -j 4 
+#        $ make -j 4
 #        $ make install
 #
 # After a successful build you can safely remove all files and directories from build/
@@ -15,13 +16,12 @@
 #   - To create a `compile_commands.json` file for clangd integration:
 #        $ cmake -DCMAKE_EXPORT_COMPILE_COMMANDS=1 ..
 
-
-project(PlatoSim)
-
-
 # cmake version shouldn't be too old
 
-cmake_minimum_required(VERSION 2.8)
+cmake_minimum_required(VERSION 3.5)
+
+
+project(PlatoSim)
 
 # Find out which version of the software is being compiled (through git commit hash)
 # so that we can include it in the output HDF5 file.
@@ -68,7 +68,7 @@ configure_file(
 include_directories(
 	${CMAKE_BINARY_DIR}/generated
     ${CMAKE_CURRENT_SOURCE_DIR}/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/dependencies/Installs/hdf5-1.12.0/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/dependencies/Installs/hdf5-1.14.6/include
     ${CMAKE_CURRENT_SOURCE_DIR}/dependencies/Installs/armadillo-6.500.4/include
     ${CMAKE_CURRENT_SOURCE_DIR}/dependencies/Installs/yaml-cpp/include
     ${CMAKE_CURRENT_SOURCE_DIR}/dependencies/Installs/fftw-3.3.4/include
@@ -102,7 +102,7 @@ add_library(platosimLibrary ${platosimSourceFiles})
 # Specify the location of the dependency libraries
 
 link_directories(
-    ${CMAKE_CURRENT_SOURCE_DIR}/dependencies/Installs/hdf5-1.12.0/lib
+    ${CMAKE_CURRENT_SOURCE_DIR}/dependencies/Installs/hdf5-1.14.6/lib
     ${CMAKE_CURRENT_SOURCE_DIR}/dependencies/Installs/armadillo-6.500.4/lib
     ${CMAKE_CURRENT_SOURCE_DIR}/dependencies/Installs/yaml-cpp/lib
     ${CMAKE_CURRENT_SOURCE_DIR}/dependencies/Installs/fftw-3.3.4/lib
@@ -141,16 +141,17 @@ ENDIF("${isSystemDir}" STREQUAL "-1")
 
 # Set the compiler flags
 # First those common to both gcc and clang:
-# -O3   = level 3 optimization; 
-# -Wall = enable all compiler's warning messages
+# -O3       : level 3 optimization;
+# -Wall     : enable all compiler's warning messages
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -Wall -Wno-deprecated-register -Wno-unused-variable -Wno-return-type")
 
-
-# Then those specific for the compiler for using C++11 support.
+# Then those specific for the compiler for using C++14 support.
 
 if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -stdlib=libc++ -std=c++14")    
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -stdlib=libc++ -std=c++14")
+elseif ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "AppleClang")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -stdlib=libc++ -std=c++14")
 elseif ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++14")
 endif()
@@ -166,3 +167,4 @@ add_executable(connectionTest ${connectionTestMain})
 
 target_link_libraries(platosim platosimLibrary hdf5 hdf5_cpp armadillo yaml-cpp fftw3f fftw3f_threads pthread Faddeeva zmq)
 target_link_libraries(connectionTest zmq pthread)
+

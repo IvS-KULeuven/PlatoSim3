@@ -31,7 +31,7 @@ class QuantumEfficiency(Test):
         self.sim["SubField/NumRows"]    = 2000
         self.sim["SubField/NumColumns"] = 2000
 
-        self.sim["ObservingParameters/DecPointing"] = - self.sim["ObservingParameters/DecPointing"]
+        self.sim["Platform/Orientation/Angles/DecPointing"] = - self.sim["Platform/Orientation/Angles/DecPointing"]
 
 
     def runSimulation(self):
@@ -80,3 +80,4 @@ class QuantumEfficiency(Test):
 if __name__ == "__main__":
     t = QuantumEfficiency()
     print(t.run())
+

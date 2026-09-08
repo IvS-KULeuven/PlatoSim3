@@ -3,6 +3,7 @@
 
 #include <string>
 #include <vector>
+#include <array>
 #include <cmath>
 
 #include "armadillo"
@@ -17,6 +18,7 @@
 #include "Telescope.h"
 #include "ConfigurationParameters.h"
 #include "JitterGenerator.h"
+#include "Quaternion.h"
 
 
 using namespace std;
@@ -48,12 +50,12 @@ class Platform : public Heartbeat, HDF5Writer
         arma::mat getEquatorialToUnjitteredSpacecraftRotationMatrix();
 
         virtual double getHeartbeatInterval() override;
-        tuple<double, double> getRADecSun();
         
 
     protected:
 
         arma::mat getUnjitteredToJitteredRotationMatrix(const double yaw, const double pitch, const double roll);
+        pair<double, double> calculatePlatFormSkyCoordinatesFromQuaternion(quaternionType q_EQ2PLM);
         
         tuple<double, double, double> getNextYawPitchRoll(double time);
 
@@ -69,11 +71,12 @@ class Platform : public Heartbeat, HDF5Writer
         double currentDec;                          // Current declination     of spacecraft pointing axis (zSC-axis)             [rad]
         double originalRA;                          // Original user-given right Ascension of spacecraft pointing axis (zSC-axis) [rad]
         double originalDec;                         // Original user-given declination     of spacecraft pointing axis (zSC-axis) [rad]
-        double raSun;                               // Right ascension of the direction of the sun shield during the run          [rad]
-        double decSun;                              // Declination of the direction of the sun shield during the run              [rad]
+        double originalKappa;                       // Original user-given Platform roll angle before the jitter starts           [rad]
+        string platformOrientationSource;           // Either "Angles" or "Quaternion": orientation in the EQ reference frame
 
         JitterGenerator &jitterGenerator; 
- 
+
+        quaternionType original_q_EQ2PLM;           // Original quaternion to convert from the EQ ref frame to the spacecraft ref frame. 
         vector<double> historyTime;                 // The following vectors stores all computed ASC values to write to HDF5
         vector<double> historyRA;
         vector<double> historyDec;

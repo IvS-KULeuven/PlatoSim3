@@ -44,10 +44,15 @@ installProcedure = "cd {build};                                     \
                     mkdir build;                                    \
                     cd build;                                       \
                     cmake ..;                                       \
-                    make;                                           \
-                    make install DESTDIR={install}".format(build=buildDir, package=packageName, install=installDir)
+                    make -j {num_threads};                          \
+                    make install DESTDIR={install}".format(build=buildDir, 
+                                                           package=packageName, 
+                                                           num_threads=os.environ.get("INSTALL_NUM_THREADS"), 
+                                                           install=installDir)
 
-subprocess.call(installProcedure, shell=True)
+process = subprocess.run(installProcedure, shell=True)
+if not process.returncode == 0:
+    exit(1)
 
 
 # Armadillo installs the libraries and header files in a folder structure depending on the OS.

@@ -1,8 +1,19 @@
+import sys
 import os
 import random
 
 from platosim.simulation import Simulation
 from platosim.validation import switchOffAllEffects
+
+
+def eprint(*args, **kwargs):
+    """ 
+    print to stderr rather than to stdout. Useful to debug since all tests are ran with stdout suppressed. 
+    """
+    print(*args, file=sys.stderr, **kwargs)
+
+
+
 
 
 class Test:
@@ -26,19 +37,17 @@ class Test:
         self.sim = Simulation("test" + self.nr, outputDir = self.outputDir)
         self.setAllEffects()
 
-    def setNr(self):
 
+    def setNr(self):
         self.nr = ""
 
 
     def setAllEffects(self):
-
-
         switchOffAllEffects(self.sim)
         self.sim["Telescope/GroupID"] = "2"
         self.sim["CCD/Position"]      = "2"
         self.sim["PSF/Model"]         = "AnalyticNonGaussian"
-        
+        self.sim["Sky/SkyBackground/BackgroundValue"] = 342.
 
         # Configure the angles of the input file
 
@@ -52,15 +61,15 @@ class Test:
 
 
     def runSimulation(self):
-
         # Run PlatoSIM
         self.simFile = self.sim.run(removeOutputFile=True)
 
-    def compare(self):
 
+    def compare(self):
         return None
 
-    def run(self):
 
+    def run(self):
         self.runSimulation()
         return self.compare()
+

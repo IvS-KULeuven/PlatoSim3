@@ -17,7 +17,7 @@ using namespace std;
 
 
 
-class DetectorWithAnalyticGaussianPSF: public Detector 
+class DetectorWithAnalyticGaussianPSF: public Detector
 {
     public:
 
@@ -37,6 +37,7 @@ class DetectorWithAnalyticGaussianPSF: public Detector
         virtual void integrateLight(int exposureNr, double startTime, double exposureTime) override;
         virtual void applyFlatfield() override;
         virtual void generateFlatfieldMap();
+        virtual void readInFlatfieldMap();
 
         arma::Mat<float> flatfieldMap;      // Pixel flatfield map
 
@@ -46,9 +47,11 @@ class DetectorWithAnalyticGaussianPSF: public Detector
 
         double flatfieldNoiseRMS;     // Peak-to-peak noise amplitude
 
-        bool includeFlatfield;              // Whether or not to include flat fielding        
+        bool includeFlatfield;              // Whether or not to include flat fielding
         long flatfieldSeed;
-        bool writeFlatfieldMap;             // Whether or not to write the flatfield map to the HDF5 file 
+        bool writeFlatfieldMap;             // Whether or not to write the flatfield map to the HDF5 file
+        string flatfieldFilePath;            // Path of the flatfield file
+        string flatfieldSource;              // Determines how the flatfield gets determined 
 
     private:
 

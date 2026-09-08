@@ -54,7 +54,7 @@ class TedOnCCDs(Test):
 
             # Get the jitter from the simulation
             simFile = self.sim.run(removeOutputFile = True)
-            yaw, pitch, roll, time = simFile.getYawPitchRollFromDrift(True)
+            time, yaw, pitch, roll = simFile.getTelescopeYawPitchRoll(getTime=True)
             self.drift[CCD] = [time, yaw, pitch, roll]
 
 

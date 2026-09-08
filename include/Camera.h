@@ -45,21 +45,22 @@ class Camera : public HDF5Writer
         virtual ~Camera();
 
         virtual void configure(ConfigurationParameters &configParam);
-        virtual void exposeDetectorWithStars(Detector &detector, double startTime, double exposureTime, double readoutTimeBeforeNextExposure);
+        virtual void exposeDetectorWithStars(Detector &detector, double startTime, double exposureTime);
         virtual void exposeDetectorWithSkyBackground(Detector &detector, double startTime, double exposureTime, double readoutTimeBeforeNextExposure);
         virtual void updateParameters(double time);
-
+        double getTransmissionEfficiency(double startTime);
         virtual void initHDF5Groups() override;
         virtual void flushOutput() override;
 
         pair<double, double> skyToFocalPlaneCoordinates(double raStar, double decStar, bool useInitialOrientation=false);
         pair<double, double> focalPlaneToSkyCoordinates(double xFP, double yFP, bool useInitialOrientation=false);
+  arma::colvec telescopeToSkyCoordinates(arma::vec vecTL, bool useInitialOrientation=false);
 
         pair<double, double> undistortedToDistortedFocalPlaneCoordinates(double xFPmm, double yFPmm);
         pair<double, double> distortedToUndistortedFocalPlaneCoordinates(double xFPdist, double yFPdist);
 
         double getGnomonicRadialDistanceFromOpticalAxis(double xFP, double yFP);
-
+        void addSkybackgroundAndTransmissionEfficiency(double skyBackground, double transmissionEfficiency);
         set<unsigned int> getAllStarIDs();
 
         tuple<double, double, double, double, double, double> getInfoForTheMostRecentExposureForStar(int starID);
@@ -67,11 +68,11 @@ class Camera : public HDF5Writer
 
         double getTotalSkyBackground();
         double getFocalLength();
-
+    double getBackgroundFlux(double xFP, double yFP, Detector &detector, double startTime, double exposureTime, double readoutTimeBeforeNextExposure);
 
     protected:
 
-        virtual tuple<unsigned long, unsigned long> makeStarCatalogSelection(Detector &detector, double startTime, double exposureTime, double readoutTimeBeforeNextExposure);
+        virtual tuple<unsigned long, unsigned long> makeStarCatalogSelection(Detector &detector, double startTime, double exposureTime);
 
         int beginExposureNr;                 // Sequential number of first exposure. useful for slurm parallellisation
         int numExposures;                    // Number of exposures
@@ -86,7 +87,6 @@ class Camera : public HDF5Writer
         Parameter<double, 7> *inverseDistortionCoef; // inverse distortion coefficient to map distorted to undistorted coordinates.
 
         string distortionModel;               // The model used to compute the distortion
-
         double plateScale;                    // [arcsec/micron]
         double throughputBandwidth;           // FWHM of the throughput passband [nm]
         double throughputLambdaC;             // Central wavelength of the throughput passband [nm]
@@ -99,6 +99,7 @@ class Camera : public HDF5Writer
         bool isMapped;                    // Whether or not the PSF is mapped from a file or not
         bool includeFieldDistortion;      // Whether or not field distortion should be included
 
+        bool useConstantSkyBackground;
         double userGivenSkyBackground;    // User-set zodiacal + stellar sky background.                          [phot/pix/s]
                                           // If negative, computed by the Sky class
         double fluxOfV0Star;              // Photon flux of a V=0 (G2V) star                                      [phot/s/m^2/nm]

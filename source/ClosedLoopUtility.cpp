@@ -55,7 +55,16 @@ void ClosedLoopUtility::configure(ConfigurationParameters &configParams)
     getWindowPositionFromServer     = configParams.getBoolean("ControlTcpConnection/GetWindowPositionsFromServer");
     imagetteAddress                 = configParams.getString("ControlTcpConnection/ImagetteClientAddress");
     windowPositionAddress           = configParams.getString("ControlTcpConnection/WindowPositionServerAddress");
-    windowPositionSocketTimeout     = configParams.getInteger("ControlTcpConnection/WindowPositionSocketTimeout") * 1000;
+    windowPositionSocketTimeout     = configParams.getInteger("ControlTcpConnection/WindowPositionSocketTimeout");
+
+    if (windowPositionSocketTimeout < 0)
+    {
+        windowPositionSocketTimeout = -1;
+    }
+    else
+    {
+        windowPositionSocketTimeout *= 1000;
+    }
 
 }
 

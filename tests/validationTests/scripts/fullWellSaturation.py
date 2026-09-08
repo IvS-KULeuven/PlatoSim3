@@ -15,7 +15,7 @@ class FullWellSaturation(Test):
         self.sim["SubField/NumRows"]    = 4510
         self.sim["SubField/NumColumns"] = 1
 
-        self.sim["ObservingParameters/DecPointing"] = -self.sim["ObservingParameters/DecPointing"]
+        self.sim["Platform/Orientation/Angles/DecPointing"] = -self.sim["Platform/Orientation/Angles/DecPointing"]
         #wself.sim["PSF/Model"] = "MappedFromFile"
         #self.sim["PSF/MappedFromFile/Filename"] = self.inputDir + "/psf.hdf5"
 

@@ -44,11 +44,14 @@ installProcedure = "cd {build};                                     \
                     mkdir build;                                    \
                     cd build;                                       \
                     cmake ..;                                       \
-                    make;                                           \
-                    make install".format(build=buildDir, package=packageName)
+                    make -j {num_threads};                          \
+                    make install".format(build=buildDir, 
+                                         package=packageName,
+                                         num_threads=os.environ.get("INSTALL_NUM_THREADS"))
 
-subprocess.call(installProcedure, shell=True)
-
+process = subprocess.run(installProcedure, shell=True)
+if not process.returncode == 0:
+    exit(1)
 
 # For Mac systems, we still need to correct the relative path in the armadillo library
 

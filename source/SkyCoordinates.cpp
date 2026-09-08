@@ -4,11 +4,11 @@
 
 /**
  * \brief constructor
- * 
- * \param RA: right ascension 
+ *
+ * \param RA: right ascension
  * \param decl: declination
  * \param angleUnit: Angle::radians if input angles are in radians, Angle::degrees if in degrees
- *                   
+ *
  */
 
 SkyCoordinates::SkyCoordinates(double RA, double decl, Unit angleUnit)
@@ -25,12 +25,12 @@ SkyCoordinates::SkyCoordinates(double RA, double decl, Unit angleUnit)
 
 /**
  * \brief destructor
- * 
+ *
  */
 
 SkyCoordinates::~SkyCoordinates()
 {
-} 
+}
 
 
 
@@ -41,11 +41,11 @@ SkyCoordinates::~SkyCoordinates()
 
 /**
  * \brief Return the galactic coordinates l and b
- * 
- * \details The conversion is done for epoch B1950. 
+ *
+ * \details The conversion is done for epoch B1950.
  *          Example: double l,b;
  *                   tie(l,b) = point.toGalactic(Angle::degrees);
- * 
+ *
  * \param angleUnit: Angle::radians if output angles should be in radians, Angle::degrees if in degrees
  * \return (l, b)
  */
@@ -66,10 +66,10 @@ pair<double, double> SkyCoordinates::toGalactic(Unit angleUnit)
 
 /**
  * \brief return the ecliptic coordinates lambda and beta
- * 
+ *
  * \details Example: double l,b;
  *                   tie(l,b) = point.toGalactic(Angle::degrees);
- * 
+ *
  * \param angleUnit: Angle::radians if output angles should be in radians, Angle::degrees if in degrees
  * \return (lambda, beta)
  */
@@ -93,9 +93,9 @@ pair<double, double> SkyCoordinates::toEcliptic(Unit angleUnit)
 
 /**
  * \brief Convert ecliptic coordinates (lambda, beta) into equatorial coordinates (alpha, delta)
- * 
+ *
  * \note  Epoch=2000.0
- * 
+ *
  * \param lambda[in]:   ecliptic longitude        [rad]
  * \param beta[in]:     ecliptic latitude         [rad]
  * \param alpha[out]:   equtorial right ascension [rad]
@@ -104,8 +104,8 @@ pair<double, double> SkyCoordinates::toEcliptic(Unit angleUnit)
 
 void ecliptic2equatorial(const double lambda, const double beta, double &alpha, double &delta)
 {
-    const double obliquity = 0.409087723;                    // Obliquity of the ecliptic = 23.439 deg  [rad]
- 
+    const double obliquity = deg2rad(84381.406 / 3600.0);         // Obliquity of the ecliptic = 84381.406"  [rad]
+
     double sindelta = sin(beta) * cos(obliquity) + cos(beta) * sin(obliquity) * sin(lambda);
     delta = asin(sindelta);
     double cosdelta = cos(delta);
@@ -137,9 +137,9 @@ void ecliptic2equatorial(const double lambda, const double beta, double &alpha, 
 
 /**
  * \brief Convert equatorial coordinates (alpha, delta) into ecliptic coordinates (lambda, beta)
- * 
+ *
  * \note  Epoch=2000.0
- * 
+ *
  * \param alpha[in]:   equtorial right ascension [rad]
  * \param delta[in]:   equatorial declination [rad]
  * \param lambda[out]: ecliptic longitude [rad]
@@ -148,8 +148,8 @@ void ecliptic2equatorial(const double lambda, const double beta, double &alpha, 
 
 void equatorial2ecliptic(const double alpha, const double delta, double &lambda, double &beta)
 {
-    const double obliquity = 0.409087723;                    // Obliquity of the ecliptic = 23.439 deg  [rad]
- 
+    const double obliquity = deg2rad(84381.406 / 3600.0);         // Obliquity of the ecliptic = 84381.406"  [rad]
+
     double sinbeta = sin(delta) * cos(obliquity) - cos(delta) * sin(obliquity) * sin(alpha);
     beta = asin(sinbeta);
     double cosbeta = cos(beta);
@@ -181,9 +181,9 @@ void equatorial2ecliptic(const double alpha, const double delta, double &lambda,
 
 /**
  * \brief Convert equatorial coordinates (alpha, delta) into galactic coordinates (l, b)
- * 
- * \details The conversion is done for epoch B1950. 
- * 
+ *
+ * \details The conversion is done for epoch B1950.
+ *
  * \param alpha[in]: equtorial right ascension [rad]
  * \param delta[in]: equatorial declination [rad]
  * \param l[out]:    galactic longitude [rad]
@@ -213,7 +213,7 @@ void equatorial2galactic(const double alpha, const double delta, double &l, doub
 
     if (l < 0.0) l += 2.0 * 3.141592653589793;
 
-} 
+}
 
 
 
@@ -226,13 +226,13 @@ void equatorial2galactic(const double alpha, const double delta, double &l, doub
 
 /**
  * \brief Compute the angular separation on a great-circle between two coordinate pairs
- * 
+ *
  * \details The haversine formula is used to get better numerical accuracy.
- * 
+ *
  * \param coordinates1: coordinates of point1
  * \param coordinates2: coordinates of point2
  * \param angleUnit: Angle::radians if output angle should be in radians, Angle::degrees if in degrees
- *   
+ *
  * \return angular separation [rad]
  */
 
@@ -257,15 +257,15 @@ double angularDistanceBetween(SkyCoordinates &coordinates1, SkyCoordinates &coor
 
 /**
  * \brief Compute the angular separation on a great-circle between two coordinate pairs
- * 
+ *
  * \details The haversine formula is used to get better numerical accuracy.
- * 
+ *
  * \param RA1: right ascencsion of the first point [rad]
  * \param dec1: declination of the first point     [rad]
  * \param RA2: right ascencsion of the 2nd point   [rad]
  * \param dec2: declination of the 2nd point       [rad]
  * \param angleUnit: Angle::radians if output angle should be in radians, Angle::degrees if in degrees
- *   
+ *
  * \return angular separation [rad]
  */
 
@@ -292,15 +292,15 @@ double angularDistanceBetween(const double RA1, const double dec1, const double 
 
 /**
  * \brief Compute the angular distance of for each of the stars with coordinates (RA, dec) to a reference point (RA0, dec0).
- *        
+ *
  * \details The haversine formula is used to get better numerical accuracy.
- * 
+ *
  * \param RA0              Right ascension of the reference point [rad]
  * \param dec0             Declination of the reference point [rad]
  * \param RA               Right ascension of each of the stars [rad]
  * \param dec              Declination of each of the stars [rad]
  * \param outputAngleUnit  anglesAngle::radians if output angle should be in radians, Angle::degrees if in degrees
- *   
+ *
  * \return           Angular separation [unit: see angleUnit]
  */
 

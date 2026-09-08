@@ -38,7 +38,7 @@ class ShotNoise(Test):
         self.sim["CCD/DarkSignal/Stability"] = 0
         self.sim["CCD/DarkSignal/DSNU"]      = 0
 
-        self.sim["ObservingParameters/DecPointing"] = -self.sim["ObservingParameters/DecPointing"]
+        self.sim["Platform/Orientation/Angles/DecPointing"] = -self.sim["Platform/Orientation/Angles/DecPointing"]
 
     def runSimulation(self):
 
@@ -81,3 +81,4 @@ class ShotNoise(Test):
 if __name__ == "__main__":
     t = ShotNoise()
     print(t.run())
+

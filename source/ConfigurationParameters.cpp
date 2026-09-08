@@ -13,6 +13,7 @@
  * 
  */
 #include "ConfigurationParameters.h"
+#include "Exceptions.h"
 
 
 
@@ -95,6 +96,33 @@ vector<string> ConfigurationParameters::getKeys(const string nodeName)
 
     return keys;
 }
+
+
+
+
+/**
+ * Return true if the given nodeName exists in the yaml structure, false otherwise
+ *
+ * Input: nodeName: full node name, e.g. "ObservingParameters/RApointing"
+ *
+ * Return: boolean
+ */
+bool ConfigurationParameters::nodeExists(const string nodeName)
+{
+    bool success = true;
+    try {
+       YAML::Node node = getNode(nodeName);
+    }
+    catch (IllegalArgumentException ex) {
+        success = false;
+    }
+
+    return success;
+}
+
+
+
+
 
 
 
@@ -620,7 +648,6 @@ YAML::Node ConfigurationParameters::getNode(const string & key)
     // FIXME: explain this better, discuss with Joris...
 
     stack<YAML::Node> nodes;
-
 
     string parentNodeName = fields[0];
 

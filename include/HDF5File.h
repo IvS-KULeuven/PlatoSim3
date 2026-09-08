@@ -20,6 +20,15 @@
 
 using namespace std;
 
+struct RaggedArray
+{
+    map<string, H5::DataSet> uintDatasets;  // datasets, keyed by field name of type unsigned int
+    map<string, H5::DataSet> doubleDatasets; // datasets, keyed by field name of type float
+    H5::DataSet offsetsDataset;
+
+    std::vector<uint64_t> offsets;
+    hsize_t runningTotal = 0;
+};
 
 class HDF5File
 {
@@ -35,6 +44,9 @@ class HDF5File
 
         bool hasGroup(string groupName);
         void createGroup(string groupName);
+        RaggedArray createGroupForCosmics(string groupName, hsize_t numberExposures);
+        void createGroup(string groupName, string arrayName, hsize_t dims[3],
+                          const H5::PredType &type);
 
         bool hasDataset(string groupName, string datasetName);
 
@@ -50,16 +62,20 @@ class HDF5File
         virtual void writeArray(string groupName, string arrayName, unsigned int* array, int size);
         virtual void writeArray(string groupName, string arrayName, float*        array, int size);
         virtual void writeArray(string groupName, string arrayName, double*       array, int size);
+        template <typename T>
+        void writeArray(string groupName, string arrayName, const arma::Mat<T> &A);
+        template <typename T>
+        void writeArray(string groupName, string arrayName, int timeStep,
+			const arma::Mat<T> &data);
         template<typename T>
-        void writeArray(string groupName, string arrayName, arma::Mat<T>& A);
-        template<typename T>
-        static H5::PredType getPredType(arma::Mat<T>& A);
+        static H5::PredType getPredType(const arma::Mat<T>& A);
 
-        virtual void writeArray(string groupName, string arrayName, arma::Mat<float>& A);
-        virtual void writeArray(string groupName, string arrayName, arma::Mat<uint16_t>& A);
+        virtual void writeArray(string groupName, string arrayName, const arma::Mat<float>& A);
+        virtual void writeArray(string groupName, string arrayName, const arma::Mat<uint16_t>& A);
 
         double readDoubleGroupAttribute(string groupName, string attributeName);
         int readIntegerGroupAttribute(string groupName, string attributeName);
+        void readArrayDatasetAttribute(string groupName, string dataset, string attributeName, double *outputArray);
         double readDoubleDatasetAttribute(string groupName, string datasetName, string attributeName);
         string readStringDatasetAttribute(string groupName, string datasetName, string attributeName);
 
@@ -69,14 +85,14 @@ class HDF5File
 
         void writeVersionInformation();
         void writeTransmissionEfficiencyValues(double* array, int size);
-        void writeThroughput(int exposureNr, arma::Mat<float>& throughputMap);
+        void writeSmearingMap(arma::Mat<float>& smearingMap, bool includeQuantisation, int exposureNr);
+        void writeStraylight(vector<double>& );
         void writeTelescopeACS(vector<double>&, vector<double>&, vector<double>&, vector<double>&,
                                 vector<double>&, vector<double>&);
         void writeStarPositionByExposure(map<double, map<unsigned int, array<double, 6>>>& detectedStarInfo,
                                 int beginExposureNr);
         void writeStarPositionByStarID(map<double, map<unsigned int, array<double, 6>>>& detectedStarInfo,
                                 vector<unsigned int> starIDs);
-        void writeSmearingMap(arma::Mat<float>& smearingMap, bool includeQuantisation, int exposureNr);
         void writePointlikeGhostByExposure(map<double, map<unsigned int, array<double, 6>>>&
                                  detectedPointLikeGhostInfo, int beginExposureNr);
         void writePointlikeGhostByStarID(std::map<double, std::map<unsigned int, std::array<double, 6>>>&
@@ -84,14 +100,10 @@ class HDF5File
         void writeExtendedGhostByExposure(map<double, map<unsigned int, array<double, 7>>>&
                                  detectedExtendedGhostInfo, int beginExposureNr);
         void writeExtendedGhostByStarID(map<double, map<unsigned int, array<double, 7>>>& detectedExtendedGhostInfo);
-        void writeCosmicsWhenGroupByExposure(int exposureNr, string field, vector<unsigned int> &entryRows,
+        void writeCosmics(RaggedArray& array, int exposureNr, vector<unsigned int> &entryRows,
                           vector<unsigned int> &entryColumns, vector<double> &trailLengths,
                           vector<double> &entryAngles, vector<double> &intensities, vector<unsigned int> &rows,
-                                                 vector<unsigned int> &cols, vector<double> &flux);
-        void writeCosmicsWhithoutGroupByExposure(int exposureNr, string field, vector<unsigned int> &entryRows,
-                          vector<unsigned int> &entryColumns, vector<double> &trailLengths,
-                          vector<double> &entryAngles, vector<double> &intensities, vector<unsigned int> &rows,
-                                                 vector<unsigned int> &cols, vector<double> &flux);
+			  vector<unsigned int> &cols, vector<double> &flux);
 
     protected:
 
@@ -100,13 +112,27 @@ class HDF5File
         bool noFile;
 
     private:
-
+        template<typename T>
+	void addDataToRaggedArray(map<string, vector<T>>& data, map<string, H5::DataSet>& datasets, const hsize_t offsetVal, const hsize_t n);
 
 };
 
 
 
 bool fileExists(string filename);
+template <typename T> struct Hdf5PredType;
+
+template <>
+struct Hdf5PredType<unsigned int>
+{
+  static const H5::PredType &get() { return H5::PredType::NATIVE_UINT; }
+};
+
+template <>
+struct Hdf5PredType<double>
+{
+  static const H5::PredType &get() { return H5::PredType::NATIVE_DOUBLE; }
+};
 
 
 #endif

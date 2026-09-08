@@ -4,32 +4,44 @@
 
 /**
  * \brief Constructor.
- * 
+ *
  * \details
- * 
+ *
  * The constructor initializes the groups in the HDF5 file where the different maps (i.e. pixel map,
- * bias register map, smearing map, etc.) will be saved. 
- * 
+ * bias register map, smearing map, etc.) will be saved.
+ *
  * The following maps are initialized to zero (partly through the base class Detector):
- * 
- * pixelMap 
+n *
+ * pixelMap
  * subPixelMap
  * biasMap
  * smearingMap
  * flatfieldMap
  * throughputMap
  * cteMap
- * 
+ *
  * The flatfieldMap, throughputMap and cteMap are filled at pixel level.
- * 
+ *
  * \param configParam    Configuration parameters for the detector.
  * \param hdf5file       HFD5 file to write the detector images to.
  * \param camera         Camera to which to attach the detector.
  * \param readoutTimeBeforeNextExposure Duration of the readout that takes place before the next exposure can start.
  */
-
-DetectorWithAnalyticNonGaussianPSF::DetectorWithAnalyticNonGaussianPSF(ConfigurationParameters &configParam, HDF5File &hdf5file, Camera &camera, TemperatureGenerator &feeTemperatureGenerator, TemperatureGenerator &detectorTemperatureGenerator, double readoutTimeBeforeNextExposure, double readoutTimeDuringNextExposure)
-: Detector(configParam, hdf5file, camera, feeTemperatureGenerator, detectorTemperatureGenerator, readoutTimeBeforeNextExposure, readoutTimeDuringNextExposure), sigma(nullptr)
+DetectorWithAnalyticNonGaussianPSF::DetectorWithAnalyticNonGaussianPSF(ConfigurationParameters &configParam,
+								       HDF5File &hdf5file,
+								       Camera &camera,
+								       TemperatureGenerator &feeTemperatureGenerator,
+								       TemperatureGenerator &detectorTemperatureGenerator,
+								       double readoutTimeBeforeNextExposure,
+								       double readoutTimeDuringNextExposure)
+: Detector(configParam,
+	   hdf5file,
+	   camera,
+	   feeTemperatureGenerator,
+	   detectorTemperatureGenerator,
+	   readoutTimeBeforeNextExposure,
+	   readoutTimeDuringNextExposure),
+  sigma(nullptr)
 {
     // Parse the parameters from the configuration file.
 
@@ -41,10 +53,22 @@ DetectorWithAnalyticNonGaussianPSF::DetectorWithAnalyticNonGaussianPSF(Configura
 
     if(includeFlatfield)
     {
-    		// Generate the flatfield map
+        if (flatfieldSource == "FromRedNoise")
+        {
+            // Generate the flatfield map
 
-    		generateFlatfieldMap();
+            generateFlatfieldMap();
+        }
+        else if (flatfieldSource == "FromFile")
+        {
+            // Read in the flatfield map
+
+            readInFlatfieldMap();
+        }
     }
+
+    // TODO Initialize and load the PSF. This will open the PSF HDF5 file and perform some basic checking,
+    // Then select the proper PSF for the given subfield. Should only be done after calling configure().
 }
 
 
@@ -75,26 +99,39 @@ DetectorWithAnalyticNonGaussianPSF::~DetectorWithAnalyticNonGaussianPSF()
 
 /**
  * \brief Configure the DetectorWithAnalyticNonGaussianPSF object using the ConfigurationParameters
- * 
- * \param configParam: the configuration parameters 
+ *
+ * \param configParam: the configuration parameters
  **/
 
 void DetectorWithAnalyticNonGaussianPSF::configure(ConfigurationParameters &configParam)
 {
-    numExposures        = configParam.getUnsignedInteger("ObservingParameters/NumExposures");
-    beginExposureNr     = configParam.getUnsignedInteger("ObservingParameters/BeginExposureNr");
-    cycleTime           = configParam.getDouble("ObservingParameters/CycleTime");                 
 
-    flatfieldNoiseRMS   = configParam.getDouble("CCD/FlatfieldNoiseRMS");
-    includeFlatfield    = configParam.getBoolean("CCD/IncludeFlatfield");
-    flatfieldSeed       = configParam.getLong("RandomSeeds/FlatFieldSeed");
+    // Fetch configuration information
+  
+    numExposures      = configParam.getUnsignedInteger("ObservingParameters/NumExposures");
+    beginExposureNr   = configParam.getUnsignedInteger("ObservingParameters/BeginExposureNr");
+    cycleTime         = configParam.getDouble("ObservingParameters/CycleTime");
+    includeFlatfield  = configParam.getBoolean("CCD/IncludeFlatfield");
+    if (includeFlatfield)
+    {
+        flatfieldSource = configParam.getString("CCD/Flatfield/Source");
+        if (flatfieldSource == "FromFile")
+        {
+            flatfieldFilePath = configParam.getAbsoluteFilename("CCD/Flatfield/FromFile/FilePath");
+        }
+        else if (flatfieldSource == "FromRedNoise")
+        {
+            flatfieldNoiseRMS = configParam.getDouble("CCD/Flatfield/FromRedNoise/FlatfieldNoiseRMS");
+            flatfieldSeed     = configParam.getLong("RandomSeeds/FlatFieldSeed");
+        }
+    }
 
     // Read and configure the parameters used to calculate the PSF
 
     string filename = configParam.getAbsoluteFilename("PSF/AnalyticNonGaussian/ParameterFileName");
 
     ifstream file(filename);
-    if (!file) 
+    if (!file)
     {
         Log.error("DetectorWithAnalyticNonGaussianPSF::configure(): Parameter file doesn't exist or is not readable: "  + filename);
         throw ConfigurationException("DetectorWithAnalyticNonGaussianPSF: wrong parameter filename in configuration file");
@@ -102,7 +139,7 @@ void DetectorWithAnalyticNonGaussianPSF::configure(ConfigurationParameters &conf
 
     params.clear();
     string line;
-    while (getline(file, line)) 
+    while (getline(file, line))
     {
         if (line == "" || line.find("#") == 0)
             continue;
@@ -118,52 +155,50 @@ void DetectorWithAnalyticNonGaussianPSF::configure(ConfigurationParameters &conf
 
     // The parameters for the charge diffusion
 
-    includeChargeDiffusion = configParam.getBoolean("PSF/AnalyticNonGaussian/IncludeChargeDiffusion");
+    includeChargeDiffusion  = configParam.getBoolean("PSF/AnalyticNonGaussian/IncludeChargeDiffusion");
     chargeDiffusionStrength = configParam.getDouble("PSF/AnalyticNonGaussian/ChargeDiffusionStrength");
 
     Log.info("DetectorWithAnalyticNonGaussianPSF: sigma of charge diffusion: " + to_string(chargeDiffusionStrength) + " pix");
 
-    
     // The sigma of the PSF can either be a fixed value, or given by a time series in a file
-    
+
     string sigmaPSFSource = configParam.getString("PSF/AnalyticNonGaussian/Sigma/Source");
     if (sigmaPSFSource == "ConstantValue")
     {
         double sigmaPSFValue = configParam.getDouble("PSF/AnalyticNonGaussian/Sigma/ConstantValue");     // [pix]
         sigma = new Parameter<double>(sigmaPSFValue);
-    
+
         Log.info("DetectorWithAnalyticNonGaussianPSF: Using a constant PSF sigma: " + to_string(sigmaPSFValue) + " pix");
     }
     else if (sigmaPSFSource == "FromFile")
     {
         string sigmaPSFInputFile = configParam.getAbsoluteFilename("PSF/AnalyticNonGaussian/Sigma/FromFile");
         sigma = new Parameter<double>(sigmaPSFInputFile, 1);                                            // [pix]
-    
+
         Log.info("DetectorWithAnalyticNonGaussianPSF: Reading sigma PSF from " + sigmaPSFInputFile);
     }
 
-
     // The configuration for the on-the-fly photometry
 
-    includePhotometry    = configParam.getBoolean("Photometry/IncludePhotometry");
+    includePhotometry = configParam.getBoolean("Photometry/IncludePhotometry");
 
     if (includePhotometry)
     {
         contaminationRadius = configParam.getInteger("Photometry/ContaminationRadius");                   // [pix]
-        maskUpdateInterval  = configParam.getDouble("Photometry/MaskUpdateInterval") * 86400.;            // [s]                  
+        maskUpdateInterval  = configParam.getDouble("Photometry/MaskUpdateInterval") * 86400.;            // [s]
         filename            = configParam.getAbsoluteFilename("Photometry/TargetFileName");
 
         // Read and store the list of star IDs for which we want a lightcurve
 
         ifstream inputfile(filename);
-        if (!inputfile) 
+        if (!inputfile)
         {
             Log.error("DetectorWithAnalyticNonGaussianPSF::configure(): 'TargetFileName' file doesn't exist or is not readable: "  + filename);
             throw ConfigurationException("DetectorWithAnalyticNonGaussianPSF: wrong TargetFileName in configuration file");
         }
 
         photStarIDs.clear();
-        while (getline(inputfile, line)) 
+        while (getline(inputfile, line))
         {
             if (line == "" || line.find("#") == 0)
             {
@@ -180,20 +215,21 @@ void DetectorWithAnalyticNonGaussianPSF::configure(ConfigurationParameters &conf
 
         for (auto starID : photStarIDs)
         {
-            inputFluxTarget[starID] = vector<double>(numExposures);  
-            estimatedFluxTarget[starID] = vector<double>(numExposures); 
+            inputFluxTarget[starID] = vector<double>(numExposures);
+            estimatedFluxTarget[starID] = vector<double>(numExposures);
             varFluxTarget[starID] = vector<double>(numExposures);
-            maskSizeTarget[starID] = vector<unsigned int>();  
-            NSRtarget[starID] = vector<double>();   
+            maskSizeTarget[starID] = vector<unsigned int>();
+            NSRtarget[starID] = vector<double>();
             exposureNrOfMaskUpdate[starID] = vector<unsigned int>();
+            aggregatedSPR[starID] = vector<double>();
         }
     }
 
-
     // The configuration for the HDF5 contents
-    
-    writeFlatfieldMap = configParam.getBoolean("ControlHDF5Content/WriteFlatfieldMap");
+
+    writeFlatfieldMap      = configParam.getBoolean("ControlHDF5Content/WriteFlatfieldMap");
     writeHighResolutionPSF = configParam.getBoolean("ControlHDF5Content/WriteHighResolutionPSF");
+    writeDiffusedPSF       = configParam.getBoolean("ControlHDF5Content/WriteDiffusedPSF");
 
 } // end configure()
 
@@ -209,12 +245,12 @@ void DetectorWithAnalyticNonGaussianPSF::configure(ConfigurationParameters &conf
 
 
 /**
- * \brief Update the time dependent parameters of the Detector to their 
+ * \brief Update the time dependent parameters of the Detector to their
  *        value at the given time point
  *
  * \param time: current time
  *
- * \return 
+ * \return
  */
 
 void DetectorWithAnalyticNonGaussianPSF::updateParameters(double time)
@@ -237,7 +273,7 @@ void DetectorWithAnalyticNonGaussianPSF::updateParameters(double time)
 
 /**
  * \brief Interpolate and rotate PSF parameters and sum up all parts to calculate the integral of the analytic PSF.
- * 
+ *
  * \param psf:        container to hold the result of the integration
  * \param x:          x position of the PSF
  * \param y:          y position of the PSF
@@ -300,13 +336,59 @@ void DetectorWithAnalyticNonGaussianPSF::integrateAnalyticPSF(IntegralOfAnalytic
             }
             psf.addPart(ox + d[0] * co - d[1] * si, oy + d[0] * si + d[1] * co, d[2], d[3] * s, d[4] * s, d[5], d[6] + t);
         }
-    } 
-    else 
+    }
+    else
     {
         psf.addPart(ox, oy, 1., s);
     }
 }
 
+
+
+
+
+
+
+
+
+/**
+ * \brief: Read in the flatfield variations from a file.
+ *
+ */
+
+void DetectorWithAnalyticNonGaussianPSF::readInFlatfieldMap()
+{
+    HDF5File prnuFile;
+    Log.info("Detector: reading in flatfield map.");
+
+    // Prepare the prnu map by performing some basic checks
+
+    if (!FileUtilities::fileExists(flatfieldFilePath))
+    {
+      throw FileException("Detectors: trying to load flatfield file (" + flatfieldFilePath + "), but file doesn't exist.");
+    }
+
+    try
+    {
+        prnuFile.open(flatfieldFilePath);
+    }
+    catch (H5::FileIException ex)
+    {
+        Log.error("H5::FileIException: " + string(ex.getCDetailMsg()));
+        throw H5FileException("Detector: Could not open flatfield HDF5 file: " + flatfieldFilePath);
+    }
+
+    // Select the correct subregion from our prnuFile
+    arma::Mat<float> prnuMap;
+    prnuFile.readArray("/", "PRNU", prnuMap);
+
+    flatfieldMap = prnuMap.submat(subFieldZeroPointRow, subFieldZeroPointColumn,
+                                   subFieldZeroPointRow+numRowsPixelMap-1,
+                                   subFieldZeroPointColumn+numColumnsPixelMap-1);
+
+
+    prnuFile.close();
+}
 
 
 
@@ -360,7 +442,7 @@ void DetectorWithAnalyticNonGaussianPSF::generateFlatfieldMap()
 
     unsigned int numRowsFlatfield = Nrows / 2;
     unsigned int numColumnsFlatfield = Ncolumns / 2;
-    
+
     flatfieldMap(arma::span::all, arma::span::all) = realMap(arma::span(0, numRowsFlatfield - 1), arma::span(0, numColumnsFlatfield - 1));
     flatfieldMap.reshape(numRowsFlatfield * numColumnsFlatfield, 1);
 
@@ -376,14 +458,6 @@ void DetectorWithAnalyticNonGaussianPSF::generateFlatfieldMap()
     flatfieldMap += 1;
 
     flatfieldMap.reshape(numRowsFlatfield, numColumnsFlatfield);
-
-    // Write the result to the HDF5 output file
-
-    if (writeFlatfieldMap)
-    {
-        Log.debug("Detector: writing PRNU to HDF5");
-        hdf5File.writeArray("/Flatfield", "PRNU", flatfieldMap);
-    }
 }
 
 
@@ -397,15 +471,15 @@ void DetectorWithAnalyticNonGaussianPSF::generateFlatfieldMap()
 
 /**
  * \brief: Take an exposure with the detector starting at the given time.
- *         The light is integrated during the given exposure time, during which 
- *         the detector experiences the effects of jitter and thermo-elastic telescope 
+ *         The light is integrated during the given exposure time, during which
+ *         the detector experiences the effects of jitter and thermo-elastic telescope
  *         drift. The background is assumed uniform for the whole subfield.
  *         Afterwards, the collected light is read out, and various noise effects are added.
  *
  * \param exposureNr:   Sequential number of the exposure
  * \param startTime:    Starting time of the exposure [s].
  * \param exposureTime: Duration of the exposure [s].
- * 
+ *
  * \return endTime:     Time after the exposure (startTime + exposureTime + readoutTime)
  *
  * \pre Pixel, bias register, and smearing map filled with values from previous exposure.
@@ -425,6 +499,10 @@ double DetectorWithAnalyticNonGaussianPSF::takeExposure(int exposureNr, double s
     reset();
 
     // Integration of point sources and background, taking into account jitter + drift.
+    if (!constantSkyBackground && (exposureNr == beginExposureNr))
+    {
+        fillBackgroundMap(camera, startTime, exposureTime);
+    }
 
     Log.info("Detector: Integrating light for exposure " + to_string(exposureNr) + " with exposure time = " + to_string(exposureTime));
 
@@ -465,8 +543,7 @@ double DetectorWithAnalyticNonGaussianPSF::takeExposure(int exposureNr, double s
 
     if (writeCosmics)
     {
-            if (groupByExposure){writeCosmicHitsToHDF5WhenGroupByExposure(exposureNr);}
-            else{writeCosmicHitsToHDF5WithoutGroupByExposure(exposureNr);}
+         writeCosmicHitsToHDF5(exposureNr);
     }
 
 
@@ -513,14 +590,30 @@ void DetectorWithAnalyticNonGaussianPSF::integrateLight(int exposureNr, double s
 
     // Integration (incl. jitter): point sources + background
 
-    camera.exposeDetectorWithStars(*this, startTime, exposureTime, readoutTimeBeforeNextExposure);
-    camera.exposeDetectorWithSkyBackground(*this, startTime, exposureTime, readoutTimeBeforeNextExposure);
+    camera.exposeDetectorWithStars(*this, startTime, exposureTime);
+    if (constantSkyBackground)
+    {
+        camera.exposeDetectorWithSkyBackground(*this, startTime, exposureTime, readoutTimeBeforeNextExposure);
+    }
+    else
+    {
+        addBackgroundMapToPixelMap(camera, startTime);
+    }
+
 
     // Apply throughput efficiency on the pixel map.
     // This takes into account the QE, vignetting, polarisation, and particulate & molecular contamination.
     // PixelMap units change from [photons] to [electrons]
 
     applyThroughputEfficiency();
+
+    // Include straylight after we apply the throughput efficiency, since this
+    // is already taken into account in the PST that we use in the straylight
+    
+    if (includeStraylight)
+    {
+        addStraylightToPixelMap(startTime);
+    }
 
     // Apply the charge injection which will mitigate the CTI. The injection happens in electrons,
     // so the throughput efficiency should already have been applied. The injected charges do feel the PRNU,
@@ -766,7 +859,7 @@ tuple<bool, double, double> DetectorWithAnalyticNonGaussianPSF::addExtendedGhost
  *                   Its size will be  (Npixels * Nsubpixels) x  (Npixels * Nsubpixels)
  */
 
-void DetectorWithAnalyticNonGaussianPSF::makeHighResolutionPSF(arma::Mat<float> &highResMap, int Npixels, int Nsubpixels)
+void DetectorWithAnalyticNonGaussianPSF::makeHighResolutionPSF(arma::Mat<float> &highResMap, bool includeDiffusion, int Npixels, int Nsubpixels)
 {
     // Put the PSF right in the middle of the (high-res) (sub)pixel map
 
@@ -782,22 +875,21 @@ void DetectorWithAnalyticNonGaussianPSF::makeHighResolutionPSF(arma::Mat<float> 
     double xFP, yFP;
     tie(xFP, yFP) = pixelToFocalPlaneCoordinates(middleRowSubfield, middleColSubfield);
 
+    // Convolve with Gaussian diffusion kernel is requested
 
-    double s = (*sigma)();
     double diffusionKernelWidth = 0.;
 
-    if (includeChargeDiffusion)
+    if (includeDiffusion)
     {
         diffusionKernelWidth = chargeDiffusionStrength;
-        s = sqrt(s * s + diffusionKernelWidth * diffusionKernelWidth);
     }
 
     int size = Npixels * Nsubpixels;
     highResMap.set_size(size, size);
     highResMap.fill(0.0);
 
-    int sx = (int)floor(column0*Nsubpixels - (size - 1.) / 2.);
-    int sy = (int)floor(row0*Nsubpixels - (size - 1.) / 2.);
+    int sx = (int)floor(column0 * Nsubpixels - (size - 1.) / 2.);
+    int sy = (int)floor(row0    * Nsubpixels - (size - 1.) / 2.);
 
     // Construct the PSF around the central pixel coordinates
 
@@ -897,19 +989,42 @@ void DetectorWithAnalyticNonGaussianPSF::flushOutput()
     int Npixels = 8;
     int Nsubpixels = 128;
 
-    // Create the group in the HDF5 file. We chose the same name as for DetectorWithMappedPSF
+    // Create the group in the HDF5 file.
+    // We chose the same name as for DetectorWithMappedPSF
 
-    hdf5File.createGroup("/PSF");
+    if (writeHighResolutionPSF || (writeDiffusedPSF && includeChargeDiffusion))
+      {
+    	hdf5File.createGroup("/PSF");
+      }
 
-    // Generate the high-resolution map
+    // Generate and save the high resolution PSF (center of subfield)
 
-    arma::Mat<float> highResMap;
-    makeHighResolutionPSF(highResMap, Npixels, Nsubpixels);
-
-    // Save the map to HDF5
     if (writeHighResolutionPSF)
     {
-    hdf5File.writeArray("/PSF", "HighResPSFmapCenterSubfield", highResMap);
+      Log.info("Writing high resolution PSF to the HDF5 file");
+
+      arma::Mat<float> highResMap;
+      makeHighResolutionPSF(highResMap, false, Npixels, Nsubpixels);
+      hdf5File.writeArray("/PSF", "highResPSF", highResMap);
+    }
+
+    // Generate and save the diffused high resolution PSF (center of subfield)
+
+    if (writeDiffusedPSF && includeChargeDiffusion)
+    {
+      Log.info("Writing diffused high resolution PSF to the HDF5 file");
+
+      arma::Mat<float> highResDiffusedMap;
+      makeHighResolutionPSF(highResDiffusedMap, true, Npixels, Nsubpixels);
+      hdf5File.writeArray("/PSF", "diffusedPSF", highResDiffusedMap);
+    }
+
+    // Save PRNU
+    if (writeFlatfieldMap)
+    {
+        Log.info("Writing PRNU to the HDF5 file");
+        hdf5File.createGroup("/Flatfield");
+        hdf5File.writeArray("/Flatfield", "PRNU", flatfieldMap);
     }
 
     // Save the photometry info
@@ -948,12 +1063,15 @@ void DetectorWithAnalyticNonGaussianPSF::flushOutput()
             arrayName = "maskNSR";
             hdf5File.writeArray(groupName, arrayName, NSRtarget[starID].data(), NSRtarget[starID].size());
 
+            arrayName = "maskSPR";
+            hdf5File.writeArray(groupName, arrayName, aggregatedSPR[starID].data(), aggregatedSPR[starID].size());
+
             for(auto iter = rowIndexOfMaskOfTarget[starID].begin(); iter != rowIndexOfMaskOfTarget[starID].end(); ++iter)
             {
                 const unsigned int exposureNumber = iter->first;
 
                 stringstream myStream;
-                myStream << "Exposure" << setfill('0') << setw(6) << exposureNumber;
+                myStream << "Exposure" << setfill('0') << setw(7) << exposureNumber;
                 groupName = "/Photometry/Masks/starID" + starName + "/" + myStream.str();
                 hdf5File.createGroup(groupName);
 
@@ -979,6 +1097,10 @@ void DetectorWithAnalyticNonGaussianPSF::flushOutput()
 
 /**
  * \brief Extract the photometric light curve for a specified list of stars
+ * 
+ * Based on the following article:
+ *    In-flight photometry extraction of PLATO targets. Optimal apertures for detecting extrasolar planets
+ *    Marchiori V. et al., 2019, A&A 627, 71
  *
  * TODO: - better error catching when the stars for which a lightcurve is requested are (sometimes) not in the subfield
  *       - better treatment when there are no contaminants
@@ -988,7 +1110,7 @@ void DetectorWithAnalyticNonGaussianPSF::applyPhotometry(const unsigned int expo
 {
     const unsigned int zeroBasedExposureNr = exposureNr - beginExposureNr;
 
-    const double varianceRON = sqrt(pow(readoutNoise, 2) + pow(frontEndElectronics->getReadoutNoise(), 2));      // [electrons / pixel]
+    const double varianceRON = pow(readoutNoise, 2) + pow(frontEndElectronics->getReadoutNoise(), 2);      // [electrons / pixel]
 
     // Make a (deep) copy of the pixelMap on which we can do some reductions without altering the original pixelMap
 
@@ -1012,6 +1134,9 @@ void DetectorWithAnalyticNonGaussianPSF::applyPhotometry(const unsigned int expo
     image.each_row() -= arma::mean(smearingMap - meanBias, 0);
 
     // Convert from [ADU] to [electrons] using the gain
+    // The (potentially temperature dependent) combinedGainLeft/Right is only available after applyGain() was executed. 
+    // The "combined" means that it includes the gain of both the CCD and the FEE.
+    // The unit of combinedLeft is [ADU / e-].
 
     if (subFieldZeroPointColumn <  numColumns / 2)
     {
@@ -1022,17 +1147,40 @@ void DetectorWithAnalyticNonGaussianPSF::applyPhotometry(const unsigned int expo
         image /= combinedGainRight;
     }
 
+    // The gain introduces a quantistation error: the number of electrons is a multiple of the gain:
+    //           e = ADU * gain
+    // We assume that the true (unknown) number of electrons are somewhere between e - 0.5 gain and e + 0.5 gain,
+    // uniformly distributed. This leads to a quantisation uncertainty with a variance 
+    //           gain^2 / 12
+    // (variance of a uniform distribution).
+
+    double varianceQuant = 0.0;
+    if (subFieldZeroPointColumn < numColumns / 2) {
+        varianceQuant = 1.0/(combinedGainLeft*combinedGainLeft) / 12.0;
+    } else {
+        varianceQuant = 1.0/(combinedGainRight*combinedGainRight) / 12.0;
+    }
+
+    Log.debug("Detector::applyPhotometry: exposure " + to_string(exposureNr) + ": var RON = " + 
+              to_string(varianceRON) + "[e-^2], var quant = " + to_string(varianceQuant) + " [e-^2]");
+
     // Subtract the sky background
 
     const double skyBackground = camera. getTotalSkyBackground();                // [photons/pixel/exposure]
     image -= throughputMap * skyBackground;                                      // [e-/pixel/exposure]
+
+    // Make sure all image pixels are positive. Because of the Poisson noise and because we subtracted mean values, 
+    // we may sometimes arrrive at negative flux values in a pixel. 
+
+    arma::Mat<arma::uword> isNegative = arma::find(image < 0.0);
+    image(isNegative).zeros();
 
     // Loop over all targets for which you need a lightcurve
 
     const int Ntargets = photStarIDs.size();                                     // Nr of stars for which we want a lightcurve
     if (Ntargets == 0)
     {
-        Log.warning("Detector:applyPhotometry: no stars found for which photometry is requested. Skipping applyPhotometry().");
+        Log.warning("Detector::applyPhotometry: no stars found for which photometry is requested. Skipping applyPhotometry().");
         return;
     }
 
@@ -1041,6 +1189,9 @@ void DetectorWithAnalyticNonGaussianPSF::applyPhotometry(const unsigned int expo
         // Collect info on the position and the input flux of the target
 
         int starID = photStarIDs[n];
+
+        Log.info("Detector::applyPhotometry: Computing photometry for star ID = " + to_string(starID)
+                 + " for exposure # " + to_string(exposureNr));
 
         double time;                                                      // Time stamp of the last exposure         [s]
         double xFPtarget;                                                 // Mean x-coordinate in the focal plane    [mm]
@@ -1053,7 +1204,8 @@ void DetectorWithAnalyticNonGaussianPSF::applyPhotometry(const unsigned int expo
 
         if (fluxTarget == -1.0)
         {
-            Log.warning("Detector:applyPhotometry: no info found for star " + to_string(starID) + " for which photometry is requested");
+            Log.warning("Detector:applyPhotometry: star ID " + to_string(starID) + " could not be found on the subfield "
+                        + "for exposure #" + to_string(exposureNr));
             continue;
         }
 
@@ -1077,14 +1229,19 @@ void DetectorWithAnalyticNonGaussianPSF::applyPhotometry(const unsigned int expo
             arma::Mat<float> singleTargetMap(numRowsPixelMap, numColumnsPixelMap);
             arma::Mat<float> contaminantMap(numRowsPixelMap, numColumnsPixelMap);
 
-            // Create a noiseless subfield as if there was only the flux of this single target
+            // Create a noiseless subfield as if there was only the flux of this single target (throughput not taken into account).
+            // Units of singleTargetMap: [photons/exposure]
 
             singleTargetMap.zeros();
             double r = rad2deg(camera.getGnomonicRadialDistanceFromOpticalAxis(xFPtarget, yFPtarget));
             double p = atan2(yFPtarget, xFPtarget);
             bool success = addFluxToMap(singleTargetMap, rowTarget, colTarget, r, p, fluxTarget);
+            if (!success) {
+                Log.error("Detector::applyPhotometry: problem adding PSF to pixel map");
+            }
 
             // Create a noiseless subfield of only the possible contaminants
+            // Units of contaminantMap: [photons/exposure]
 
             contaminantMap.zeros();
 
@@ -1133,6 +1290,7 @@ void DetectorWithAnalyticNonGaussianPSF::applyPhotometry(const unsigned int expo
             }
 
             // For the pixels in the designated area around our target, compute the variance and the noise/signal ratio of the signal.
+            // NSR = Noise-to-signal ratio
             // Example size: if the pixelMap is 100x100 pixels, and we consider a mask of 4x4 pixels, then NSRmap is a 2D array of size
             //               100x100, but flatNSRmap is a 1D array of size 16.
 
@@ -1147,8 +1305,10 @@ void DetectorWithAnalyticNonGaussianPSF::applyPhotometry(const unsigned int expo
                     // We assume photon noise, so the variance equals the flux. We multiply by the throughput so that both terms
                     // are expressed in [e-/exposure].
 
-                    varianceMap(irow, icol) = (singleTargetMap(irow, icol) + contaminantMap(irow, icol) + skyBackground) * throughputMap(irow, icol) + varianceRON;
-                    NSRmap(irow, icol) = sqrt(varianceMap(irow, icol)) / singleTargetMap(irow, icol);
+                    varianceMap(irow, icol) = (singleTargetMap(irow, icol) + contaminantMap(irow, icol) + skyBackground) 
+                                                * throughputMap(irow, icol) 
+                                              + varianceRON + varianceQuant;
+                    NSRmap(irow, icol) = sqrt(varianceMap(irow, icol)) / (singleTargetMap(irow, icol) * throughputMap(irow, icol));
                     flatNSRmap.push_back(NSRmap(irow, icol));
                 }
             }
@@ -1171,13 +1331,18 @@ void DetectorWithAnalyticNonGaussianPSF::applyPhotometry(const unsigned int expo
 
             // Build the mask, starting with the pixel with the best NSR, adding one pixel at the time,
             // with the condition that adding a pixel should contribute more to the aggregated signal than to the aggregated noise.
+            // The aggregatedVariance, aggregatedSingleTargetFlux, and aggregatedObservedTargetFlux all have units [e-/exposure].
 
             // Initialize with the first pixel
 
             double aggregatedVariance            = varianceMap(rowIndex[0], colIndex[0]);
-            double aggregatedSingleTargetFlux    = singleTargetMap(rowIndex[0], colIndex[0]);
+            double aggregatedSingleTargetFlux    = singleTargetMap(rowIndex[0], colIndex[0]) * throughputMap(rowIndex[0], colIndex[0]);
             double aggregatedObservedTargetFlux  = image(rowIndex[0], colIndex[0]);
             double aggregatedNSR                 = NSRmap(rowIndex[0], colIndex[0]);
+            double aggregatedContaminantFlux = contaminantMap(rowIndex[0], colIndex[0]) * throughputMap(rowIndex[0], colIndex[0]);
+            double aggregatedTotalFlux   = (singleTargetMap(rowIndex[0], colIndex[0]) + contaminantMap(rowIndex[0], colIndex[0]) 
+                                                     + skyBackground) * throughputMap(rowIndex[0], colIndex[0]);
+
             maskSizeTarget[starID].push_back(1);
 
             rowIndexOfMaskOfTarget[starID][exposureNr] = {rowIndex[0]};
@@ -1187,28 +1352,38 @@ void DetectorWithAnalyticNonGaussianPSF::applyPhotometry(const unsigned int expo
 
             for (int i = 1; i < rowIndex.size(); i++)
             {
-                double temp = sqrt(aggregatedVariance + varianceMap(rowIndex[i], colIndex[i])) / (aggregatedSingleTargetFlux + singleTargetMap(rowIndex[i], colIndex[i]));
+                double temp = sqrt(aggregatedVariance + varianceMap(rowIndex[i], colIndex[i])) 
+                                / (aggregatedSingleTargetFlux 
+                                      + singleTargetMap(rowIndex[i], colIndex[i]) * throughputMap(rowIndex[i], colIndex[i]) );
                 if (temp < aggregatedNSR)
                 {
                     // The aggregated Noise / Signal ratio improved by adding a pixel, so include the pixel in the mask
 
                     aggregatedVariance           += varianceMap(rowIndex[i], colIndex[i]);
-                    aggregatedSingleTargetFlux   += singleTargetMap(rowIndex[i], colIndex[i]);
+                    aggregatedSingleTargetFlux   += singleTargetMap(rowIndex[i], colIndex[i]) * throughputMap(rowIndex[i], colIndex[i]);
                     aggregatedObservedTargetFlux += image(rowIndex[i], colIndex[i]);
                     aggregatedNSR = temp;
+                    aggregatedContaminantFlux += contaminantMap(rowIndex[i], colIndex[i]) * throughputMap(rowIndex[i], colIndex[i]);
+                    aggregatedTotalFlux += (singleTargetMap(rowIndex[i], colIndex[i]) + contaminantMap(rowIndex[i], colIndex[i]) 
+                                                             + skyBackground) * throughputMap(rowIndex[i], colIndex[i]);
                     maskSizeTarget.at(starID).back() += 1;
                     rowIndexOfMaskOfTarget.at(starID).at(exposureNr).push_back(rowIndex[i]);
                     colIndexOfMaskOfTarget.at(starID).at(exposureNr).push_back(colIndex[i]);
                 }
                 else
                 {
-                    // The aggregated Noise/Signal ratio did not improve by adding this pixel. Not only can we ignore exclude this pixel from the
-                    // mask, but also all subsequent ones that have an even worse noise/signal ratio. So finalize the mask for this target, and
-                    // then break out of the for-loop.
+                    // The aggregated Noise/Signal ratio did not improve by adding this pixel. Not only can we ignore exclude this pixel 
+                    // from the mask, but also all subsequent ones that have an even worse noise/signal ratio. So finalize the mask for 
+                    // this target, and then break out of the for-loop.
 
                     estimatedFluxTarget.at(starID).at(zeroBasedExposureNr) = aggregatedObservedTargetFlux;
                     varFluxTarget.at(starID).at(zeroBasedExposureNr) = aggregatedVariance;
                     NSRtarget.at(starID).push_back(aggregatedNSR);
+                    aggregatedSPR.at(starID).push_back(aggregatedContaminantFlux / aggregatedTotalFlux);
+
+                    Log.debug("Detector::applyPhotometry: star ID " + to_string(starID) + " has a mask of " + to_string(i) + " pixels"
+                              + " with aggregated S/N = " + to_string(1/aggregatedNSR)
+                              + " and SPR = " + to_string(aggregatedContaminantFlux / aggregatedTotalFlux));
 
                     // Disregard all other pixels of the window around the target star: they all contribute more to the noise than to the signal.
 
@@ -1223,7 +1398,8 @@ void DetectorWithAnalyticNonGaussianPSF::applyPhotometry(const unsigned int expo
         }
         else
         {
-            // For all other exposures, simply use the same (most recent) mask. We reuse the NSR of the previous mask, so no need to recompute it.
+            // For all other exposures, simply use the same (most recent) mask. 
+            // We reuse the NSR of the previous mask, so no need to recompute it. Idem for the SPR.
 
             Log.debug("Detector::applyPhotometry: extracting flux for target ID " + to_string(starID) + " for exposure " + to_string(exposureNr) + " with an old mask");
 
@@ -1238,3 +1414,12 @@ void DetectorWithAnalyticNonGaussianPSF::applyPhotometry(const unsigned int expo
         }
     } // end loop over all targets for which we want light curves
 } // end applyPhotometry()
+
+
+
+
+
+
+
+
+

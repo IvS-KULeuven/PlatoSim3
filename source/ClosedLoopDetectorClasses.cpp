@@ -159,7 +159,7 @@ double ClosedLoopDetectorWithAnalyticNonGaussianPSF::takeExposure(int exposureNr
     }
 
 
-    DetectorWithAnalyticNonGaussianPSF::takeExposure(exposureNr, startTime, exposureTime);
+    return DetectorWithAnalyticNonGaussianPSF::takeExposure(exposureNr, startTime, exposureTime);
 }
 
 
@@ -246,16 +246,22 @@ void ClosedLoopDetectorWithAnalyticNonGaussianPSF::setNewWindowPosition(std::tup
             {
                 numExposedRowsInFOV.fill(numRows - firstRowExposed);
             }
+        }
 
-            // Allocate memory for the different maps
+        // Allocate memory for the different maps
+        flatfieldMap.ones(numRowsPixelMap, numColumnsPixelMap);
 
-            flatfieldMap.ones(numRowsPixelMap, numColumnsPixelMap);
-
-            if(includeFlatfield)
+        if(includeFlatfield)
+        {
+            if (flatfieldSource == "FromRedNoise")
             {
                 // Generate the flatfield map
-
                 generateFlatfieldMap();
+            }
+            else if (flatfieldSource == "FromFile")
+            {
+                // Read in the flatfield map
+                readInFlatfieldMap();
             }
         }
     }

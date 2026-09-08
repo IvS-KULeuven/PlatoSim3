@@ -1,5 +1,6 @@
 from test import Test
 import numpy as np
+import matplotlib.pyplot as plt
 
 class DigitalSaturation(Test):
     """This test checks that digital saturation is applied. It runs the simulation with and without digital saturation switched on/off. 
@@ -22,13 +23,14 @@ class DigitalSaturation(Test):
         self.sim["CCD/IncludeDigitalSaturation"] = "yes"
         self.saturationLimit = self.sim["CCD/DigitalSaturation"]
 
-        self.sim["ObservingParameters/StarCatalogFile"] = self.inputDir + "/starcatalog.txt"
-
         # Reset the Camera so that the stars in the input file fall onto the CCD.
         self.sim["CCD/Position"] = "Custom"
         self.sim["Telescope/GroupID"] = "Custom"
         self.sim["Telescope/AzimuthAngle"] = 0.
         self.sim["Telescope/TiltAngle"]    = 0.
+
+        self.sim.createStarCatalogFileFromPixelCoordinates(np.array([2000]), np.array([2000]), np.array([4]), np.array([1]), self.outputDir + "/starCatalog.txt")
+        self.sim["ObservingParameters/StarCatalogFile"] = self.outputDir + "/starCatalog.txt"
 
         
 
@@ -52,7 +54,7 @@ class DigitalSaturation(Test):
         # check that the max value of the image with saturation is equal to the saturation limit
         imageWithSaturation = self.simFileWithSaturation.getImage(0)
         condition1 = 0 <= abs(np.max(imageWithSaturation) - self.saturationLimit) <= 1
-
+        
         return condition1 and self.condition2
 
 
