@@ -3775,7 +3775,7 @@ void Detector::writeCosmicHitsToHDF5(int exposureNr)
    if (includeCosmicsInSubField && writeCosmics)
    {
        hdf5File.writeCosmics(subFieldCosmics,
-			     exposureNr,
+			     exposureNr - beginExposureNr,
 			     cosmicEntryRowSubfield,
 			     cosmicEntryColSubfield,
 			     cosmicsTrailsSubfield,

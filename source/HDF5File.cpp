@@ -2853,7 +2853,7 @@ void HDF5File::addDataToRaggedArray(map<string, vector<T>>& data, map<string, H5
  *
  */
 void HDF5File::writeCosmics(
-    RaggedArray &array, int exposureNr, vector<unsigned int> &entryRows,
+    RaggedArray &array, int exposureIdx, vector<unsigned int> &entryRows,
     vector<unsigned int> &entryColumns, vector<double> &trailLengths,
     vector<double> &entryAngles, vector<double> &intensities,
     vector<unsigned int> &rows, vector<unsigned int> &cols, vector<double> &flux)
@@ -2880,21 +2880,8 @@ void HDF5File::writeCosmics(
     addDataToRaggedArray(uintData, uintDataset, array.runningTotal, n);
     addDataToRaggedArray(doubleData, doubleDataset, array.runningTotal, n);
 
-    // // We add the double values
-    // for (const auto& [name, values] : doubleData)
-    // {
-    //   H5::DataSet& dataset = array.doubleDatasets.at(name);
-    //   dataset.extend(newSize);
-
-    //   H5::DataSpace fileSlab = dataset.getSpace();
-    //   fileSlab.selectHyperslab(H5S_SELECT_SET, count, offset);
-    //   H5::DataSpace memSpace(1, count);
-
-    //   dataset.write(values.data(), H5::PredType::NATIVE_DOUBLE, memSpace, fileSlab);
-    // }
-
     array.runningTotal += entryRows.size();
-    array.offsets[exposureNr + 1] = array.runningTotal;
+    array.offsets[exposureIdx + 1] = array.runningTotal;
 
 }
 
