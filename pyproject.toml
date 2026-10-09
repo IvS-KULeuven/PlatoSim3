@@ -32,6 +32,7 @@ jupyter = "^1.1.1"
 optional = true
 [tool.poetry.group.platonium.dependencies]
 argos = "^0.4.5"
+pyqt5 = "^5.15.11"
 pyarrow = "^26.0.0"
 zipp = "^4.1.1"
 natsort = "^8.4.0"
@@ -40,12 +41,12 @@ astroquery = "^0.4.11"
 ldtk = "^1.9.1"
 joblib = "^1.6.0"
 lmfit = "^1.3.4"
-ligo-skymap = "^2.5.4"
 statsmodels = "^0.15.0"
 wotan = "^1.10"
 transitleastsquares = "^2.0"
 batman-package = "^2.5.3"
 pyastronomy = "^0.25.0"
+ligo-skymap = "^2.5.0"
 
 [tool.poetry.group.pipeline]
 optional = true
