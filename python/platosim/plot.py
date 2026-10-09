@@ -2476,7 +2476,7 @@ def plotPSD(fig, freq, psd, carbox=144, units=False, labels=False, colors=False,
 
     # Handle axes units
     if units is False:
-        units = ['$\mu$Hz', 'ppm']
+        units = [r'$\mu$Hz', 'ppm']
         scale = 1e6
     else:
         scale = 1
@@ -2710,9 +2710,7 @@ def create_performance_figure(data, EoL=False,
                               residual_noise_floor=0.68e-6,
                               random_noise_level=3.0e-6,
                               residual_noise_top=50e-6):
-    """
-
-    Args:
+    """Args:
         data ([np.asarray]):
         EoL Bool
         freq_break ([float], optional): [description]. Defaults to 20e-6.
@@ -2791,10 +2789,10 @@ def create_performance_figure(data, EoL=False,
     # modify x tick points
     ticks = [1e-6, min_freq, 1e-5, freq_break,
              1e-4, 1e-3, 1e-2, max_freq, 1e-1]
-    labels = ['$10^{-6}$', str(int(min_freq*1e6)) + '$\mu$Hz', '$10^{-5}$',
-              str(int(freq_break*1e6)) + '$\mu$Hz',
-              '$10^{-4}$', '$10^{-3}$', '$10^{-2}$',
-              str(int(max_freq*1e3)) + 'mHz', '$10^{-1}$']
+    labels = [r'$10^{-6}$', str(int(min_freq*1e6)) + r'$\mu$Hz', r'$10^{-5}$',
+              str(int(freq_break*1e6)) + r'$\mu$Hz',
+              r'$10^{-4}$', r'$10^{-3}$', r'$10^{-2}$',
+              str(int(max_freq*1e3)) + 'mHz', r'$10^{-1}$']
     plt.xticks(ticks=ticks, labels=labels)
 
     plt.xlabel('Frequency (Hz)')
@@ -3481,7 +3479,7 @@ def plotDetectedPlanets():
     ax[1].set_yscale('log')
     ax[1].set_title('Radius vs. Period')
     ax[1].set_xlabel('Period [days]')
-    ax[1].set_ylabel('Radius [$R_{\oplus}$]')
+    ax[1].set_ylabel(r'Radius [$R_{\oplus}$]')
 
     ax[2].scatter(df['a'], df['M'], c=df['e'], edgecolor='w', cmap='coolwarm')
     ax[2].set_xscale('log')

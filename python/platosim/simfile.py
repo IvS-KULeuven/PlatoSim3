@@ -1336,7 +1336,7 @@ class SimFile (object):
             Nexp      = len(exp) - 1
             starIDs   = self.hdf5file[groupName][exp[0]]["starID"][:]
             starIndex = np.where(starIDs == starID)
-            star      = starIndex[0]
+            star      = starIndex[0][0]
 
             # Check if star exist
 
