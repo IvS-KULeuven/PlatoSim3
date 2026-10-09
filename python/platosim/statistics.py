@@ -133,7 +133,7 @@ def plot_modelfit(data, lsFit, model, lsModel='OLS', CI=[0.05], alpha=0.1, theme
                     df_predictions.obs_ci_lower, 
                     df_predictions.obs_ci_upper, 
                     alpha=0.2, color=color[-1], zorder=3)
-    ax.plot(data[reg], df_predictions.obs_ci_lower, '-', c=color[-1], lw=1, zorder=2, label=str((1-CI[0])*100)+'\% PI')
+    ax.plot(data[reg], df_predictions.obs_ci_lower, '-', c=color[-1], lw=1, zorder=2, label=str((1-CI[0])*100)+r'\% PI')
     ax.plot(data[reg], df_predictions.obs_ci_upper, '-', c=color[-1], lw=1, zorder=2)
     
     # Plot best fit and data
