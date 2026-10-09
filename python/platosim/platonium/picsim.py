@@ -437,7 +437,7 @@ General notes:
             df = self.df0
 
         # QUERY CUTS
-
+        
         # Check sample flag
         if self.pic == 'PIC210':
             # tPIC samples
@@ -598,10 +598,9 @@ General notes:
                     break
 
         # MAKE AN OVERVIEW TABLE
-
         cameras = [6, 12, 18, 24]
-        countStars = [df[df['ncams'] == 6].count()[0],  df[df['ncams'] == 12].count()[0],
-                      df[df['ncams'] == 18].count()[0], df[df['ncams'] == 24].count()[0]]
+        countStars = [df[df['ncams'] == 6].shape[0],  df[df['ncams'] == 12].shape[0],
+                      df[df['ncams'] == 18].shape[0], df[df['ncams'] == 24].shape[0]]
         countImagettes = [countStars[i] * cameras[i] for i in range(4)]
 
         # Last collection of stars
