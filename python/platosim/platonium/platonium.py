@@ -64,7 +64,7 @@ class PLATOnium(object):
         
         # PARSED ARGUMENTS
 
-        self.targetNo = args.starID
+        self.targetID = args.starID
         self.group    = args.groupID
         self.camera   = args.cameraID
         self.quarter  = args.quarter
@@ -149,7 +149,7 @@ class PLATOnium(object):
             errorcode('error', 'Camera-group can only be [1, 2, 3, 4, 5] (Fast = 5)')
         # Select full-frame CCD
         if self.fullFrame:
-            self.ccdCode = self.targetNo
+            self.ccdCode = self.targetID
             if not self.ccdCode in [1, 2, 3, 4]:
                 errorcode('error', 'CCD code can only be [1, 2, 3, 4]')
 
@@ -322,7 +322,7 @@ class PLATOnium(object):
             self.simPrefix = ''
 
         # Set general output filename
-        self.starID = f'{self.targetNo}'.zfill(9)
+        self.starID = f'{self.targetID}'.zfill(9)
 
         # Select suffix of observation
         if self.groupID == 'Fast':
@@ -486,7 +486,7 @@ class PLATOnium(object):
                 self.targetDex = 0
                 self.df = df.loc[self.targetDex]
                 self.dc = df.iloc[1:]
-
+                print(self.df); exit()
             # Fetch stars from PIC and Gaia DR3 catalogues
             else:
                 
@@ -524,7 +524,7 @@ class PLATOnium(object):
                               'Use --field to specify a LOP or alter the YAML')
 
                 # Correct indicing and allow a specific star to be choosen
-                if self.targetNo == 0:
+                if self.targetID == 0:
                     errorcode('error', 'Star ID indicing starts from 1 and not 0!')
                 elif self.picID is not None:
                     if 'gaiaDR3' in df or 'source_gaia_dr3' in df:
@@ -536,7 +536,7 @@ class PLATOnium(object):
                                   f'\n{self.catTarFile}')
                 else:
                     # Set index of target
-                    self.targetDex = self.targetNo - 1
+                    self.targetDex = self.targetID - 1
                             
                 # Select target star
                 self.df = df.iloc[self.targetDex]
@@ -578,11 +578,10 @@ class PLATOnium(object):
             self.ds['ra']  = np.append(self.df['ra'],  self.dc['ra'])
             self.ds['dec'] = np.append(self.df['dec'], self.dc['dec'])
             self.ds['mag'] = np.append(self.df['mag'], self.dc['mag'])
-            targetID = int(self.df['ID'])
             if not self.conNone:
-                self.ds['ids'] = np.append([targetID], int(10**8) + np.arange(1, self.numCon+1))
+                self.ds['ids'] = np.append([self.targetID], int(10**8)+np.arange(1, self.numCon+1))
             else:
-                self.ds['ids'] = targetID
+                self.ds['ids'] = self.targetID
 
         
     def init_sim(self):
@@ -1058,10 +1057,10 @@ class PLATOnium(object):
         # If successful, the CCD and subfield parameters is sets in the 'sim' object.        
         info = sim.setSubfieldAroundSkyCoordinates(raTargetRad, decTargetRad,
                                                    numColSubfield, numRowSubfield,
-                                                   normal=self.normal, returnInfo=True)
+                                                   returnInfo=True)
         if info[0] == None:
             if self.verbose > 0:
-                message  = (f"{self.colID} {self.df[self.colID]} (subfield {self.targetNo}) " +
+                message  = (f"{self.colID} {self.df[self.colID]} (subfield {self.targetID}) " +
                             'do not fall on any of the CCDs for N-CAM ' +
                             f'{self.group}.{self.camera} and Q{self.quarter}!')
                 errorcode('warning', message)
@@ -1097,7 +1096,7 @@ class PLATOnium(object):
         # Account for maximum optical distortion: rAO = 19.8deg -> T = 1%
         if self.rOA > sim['CCD/RelativeTransmissivity/RadiusFOV']:
             if self.verbose > 0:
-                message  = (f"{self.colID} {self.df[self.colID]} (subfield {self.targetNo}) " +
+                message  = (f"{self.colID} {self.df[self.colID]} (subfield {self.targetID}) " +
                             f'is outside camera FOV (rOA={self.rOA:.2f} deg) ' +
                             f'for N-CAM {self.group}.{self.camera} and Q{self.quarter}!')
                 errorcode('warning', message)
@@ -1118,7 +1117,7 @@ class PLATOnium(object):
 
         # Seeds needs to be available for L1 pipeline
         self.seedJitter = seed * self.quarter
-        self.seedTarget = seed * self.quarter + 1000 * self.targetNo + self.group * self.camera
+        self.seedTarget = seed * self.quarter + 1000 * self.targetID + self.group * self.camera
 
         # Jitter (relevant for red noise) only depends on the quarter
         if sim["Platform/UseJitter"] == 'yes' and sim["Platoform/JitterSource"] == 'RedNoise':
@@ -1192,7 +1191,7 @@ class PLATOnium(object):
                 if self.varSourceFile.is_file():
                     # Automaticallt create and save varSourceList to file
                     self.varSourceList = f'{self.outputDir}/{self.outputFileName}.var'
-                    sim.createVariableSourceList('1', str(self.varSourceFile), self.varSourceList)
+                    sim.createVariableSourceList(str(self.targetID), str(self.varSourceFile), self.varSourceList)
                 else:
                     errorcode('error', 'VariableSourceFile do not exist, check file path!')
                 # Print to bash
@@ -1204,14 +1203,13 @@ class PLATOnium(object):
         # NOTE if a user defined file name for the photometry file is parsed
         # then a photometry file list is created automatically
         if sim['Photometry/IncludePhotometry'] is True:
-            photometryList = self.inputDir.joinpath('photometry.txt')
-            if os.path.exists(photometryList) is False:
-                np.savetxt(photometryList, np.array([]), header='1', comments='')
-            sim["Photometry/TargetFileName"] = photometryList
+            self.photometryList = self.outputDir.joinpath(f'{self.outputFileName}.phot')
+            np.savetxt(self.photometryList, np.array([]), header=str(self.targetID), comments='')
+            sim["Photometry/TargetFileName"] = self.photometryList
             self.photometry = True
             # Print to bash
             if self.verbose > 1:
-                print(f'Applying on-board photometry  ({photometryList.name})')
+                print(f'Applying on-board photometry  ({self.photometryList.name})')
         else:
             self.photometry = False
 
@@ -1238,7 +1236,7 @@ class PLATOnium(object):
         sim["ControlHDF5Content/WriteStarPositions"] = True
 
         # Add photometric mask to plot if available
-        if sim['Photometry/IncludePhotometry']: mask = 1
+        if sim['Photometry/IncludePhotometry']: mask = self.targetID
         else: mask = None
             
         # Run simulation for first image cadence
@@ -1699,8 +1697,8 @@ class PLATOnium(object):
         sim["ControlHDF5Content/WriteDiffusedPSF"]            = True
 
         # Save catalog and load it into the inputfile
-        numStar = self.numCon + 1
-        self.ds.ids = np.arange(self.targetNo, self.targetNo + numStar, 1) + 1
+        # numStar = self.numCon + 1
+        # self.ds.ids = np.arange(self.targetID, self.targetID + numStar, 1) + 1
 
         # Run the microscan simulation
         if self.verbose > 1:
@@ -1902,7 +1900,7 @@ class PLATOnium(object):
         """
         # Write PlatoSim info to a table
         filename = f'{odir}/{self.outputFileName}.table'
-        data = {"ID":       self.targetNo,
+        data = {"ID":       self.targetID,
                 self.colID: self.df[self.colID],
                 "ra":       self.df.ra,
                 "dec":      self.df.dec,
@@ -1924,7 +1922,7 @@ class PLATOnium(object):
         if self.photometry:
             f = SimFile(f'{self.outputSimName}.hdf5')
             try:
-                mask = f.getApertureMask(1)
+                mask = f.getApertureMask(self.targetID)
             except:
                 pass
             else:

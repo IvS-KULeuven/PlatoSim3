@@ -151,16 +151,21 @@ import platosim.plot      as pt
 import platosim.utilities as ut
 from platosim.utilities import errorcode
 from platosim.spectrum  import Spectrum
-from platosim.varsource import (Pulsator,
-                                StellarFlares,
-                                StellarSpots,
-                                SolarLikeOscillator,
-                                SurfaceModulations,
-                                EclipsingBinary,
-                                SMBHB,
-                                PlanetMRforecast,
-                                DopplerBeaming,
-                                EllipsoidalDistortion)
+from platosim.varsource import (
+    # Stellar variability
+    Pulsator,
+    StellarFlares,
+    StellarSpots,
+    SolarLikeOscillator,
+    SurfaceModulations,
+    # Binarity
+    EclipsingBinary,
+    SMBHB,
+    # Planet
+    PlanetMRforecast,
+    DopplerBeaming,
+    EllipsoidalDistortion
+)
 
 #==============================================================#
 #                         BEGIN CLASS                          #
