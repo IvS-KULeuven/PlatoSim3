@@ -15,11 +15,11 @@ specifying it with a quaternion.
 
 def qmul(qa, qb):
     """
-    \brief  Multiplication of two quaternions qa and qb.
+    brief  Multiplication of two quaternions qa and qb.
      
-    \input Both quaternions are structured as (q0, qx, qy, qz)
+    input Both quaternions are structured as (q0, qx, qy, qz)
     
-    \output A quaternion with the same structure.
+    output A quaternion with the same structure.
     """
     result = [0.0, 0.0, 0.0, 0.0]
     result[0] = qa[0]*qb[0] - qa[1]*qb[1] - qa[2]*qb[2] - qa[3]*qb[3]
