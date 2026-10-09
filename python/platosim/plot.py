@@ -706,8 +706,8 @@ def drawStarInCCDfocalPlane(fig, sim, xCCD, yCCD, refCcdCode, refGroup,
 
     fovPixels  = fovDegrees / plateScale * c.degree / c.arcsec
     fovMm      = focalLength * np.tan(np.radians(fovDegrees))
-
-    sign = lambda x: (1, -1)[x < 0]
+    
+    sign = lambda x: (1, -1)[float(x) < 0]
 
     xFP = np.array([])
     yFP = np.array([])
