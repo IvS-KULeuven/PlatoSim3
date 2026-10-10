@@ -1133,7 +1133,7 @@ class StellarFlares(object):
         A_range = np.linspace(0, 10, N)
         A_func  = 10**(a_A * A_range + b_A)
         self.ampl = pd.Series(A_range).sample(n_flares,
-                                              weights=A_func,
+                                              weights=A_func, replace=True,
                                               random_state=self.rng).to_numpy() / 1e3
         
         # Secure lower amplitudes for less active stars

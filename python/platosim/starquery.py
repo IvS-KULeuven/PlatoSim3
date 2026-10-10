@@ -46,12 +46,9 @@ import platosim.utilities as ut
 #                      HIDDEN FUNCTIONS                        #
 #--------------------------------------------------------------#
 
-
 def _fetch_gaia_columns(flag_stellar, flag_variable, flag_quasar):
-
     """Function to fecth columns from Gaia database.
     """
-
     cols = {
         'default':['gaia.source_id',
                    'gaia.ra',
@@ -99,18 +96,18 @@ def _fetch_gaia_columns(flag_stellar, flag_variable, flag_quasar):
     if flag_quasar:
         c = cols['quasar']
         for i in c: columns.append(i)
-        
+
+    # Return columns
     return ','.join(columns)
 
 
 
 def _submit_gaia_query(query, ofile=False):
-
     """Main function query data from Gaia database.
+    
+    This function uses the urllib to keep the connection open because
+    the sky regions are huge which fails with Gaia.lunch_job.
     """
-
-    # We use the urllib to keep the connection open because
-    # the sky regions are huge which fails with Gaia.lunch_job
     params = urllib.urlencode({"REQUEST"        : "doQuery",
                                "LANG"           : "ADQL",
                                "FORMAT"         : "votable_plain",
@@ -135,8 +132,9 @@ def _submit_gaia_query(query, ofile=False):
     connection.close()
     
     # Check job status, wait until finished
-
+    
     while True:
+        # Establish connection
         connection = httplib.HTTPSConnection(host, port)
         connection.request("GET",pathinfo+"/"+jobid)
         response = connection.getresponse()
@@ -156,6 +154,7 @@ def _submit_gaia_query(query, ofile=False):
         # Wait and repeat
         time.sleep(0.2)
 
+    # Close neection
     connection.close()
 
     # Get results    
@@ -176,13 +175,15 @@ def _submit_gaia_query(query, ofile=False):
     votable = parse(ofile)
     df = ut.votable2pandas(votable)
     os.remove(ofile)
-    
+
+    # Return data frame
     return df
 
 
 
 def _rename_columns(df, flag_stellar, flag_variable, flag_quasar):
-
+    """ Function to rename common column names.
+    """
     # Rename columns
     if 'source_id' in df:
         df = df.rename(columns={'source_id': 'source_gaia_dr3'})
@@ -262,10 +263,8 @@ def _rename_columns(df, flag_stellar, flag_variable, flag_quasar):
 #                          FUNCTIONS                           #
 #--------------------------------------------------------------#
 
-
 def ticQuery(star, radius=2, Vmax=18, outFile=None):
-
-    """Query TIC catalog for stars around a given named source below a givenV.
+    """Query TIC catalog for stars around a given star.
 
     Parameters
     ----------
@@ -284,10 +283,7 @@ def ticQuery(star, radius=2, Vmax=18, outFile=None):
         DataFrame containing the results of the query. The named star will appear first if
         it is not removed by the Vmax cut.
     """
-
-
     # Get the coordinates of the star from Simbad
-    
     result_table = Simbad.query_object(star)
     if result_table is None:
         raise ValueError(f"Could not find {star} in Simbad.")
@@ -296,18 +292,15 @@ def ticQuery(star, radius=2, Vmax=18, outFile=None):
     coords = SkyCoord(ra, dec, unit=(u.hourangle, u.deg))
 
     # Query TIC for stars around the star, within the given radius
-    
     results = Catalogs.query_region(coords, radius=radius * u.arcmin, catalog="TIC")
     if results is None:
         raise ValueError(f"Could not find any stars in TIC around {star}.")
 
-    # Convert the results to a Pandas DataFrame
-    
+    # Convert the results to a Pandas DataFrame    
     results = results.to_pandas()
     results = results[results["Vmag"] < Vmax][["ra", "dec", "Vmag"]]
 
     # Optionally write the results to a txt file
-    
     if outFile is not None:
         with open(outFile, "w") as f:
             f.write("# RA DEC Vmag\n")
@@ -315,15 +308,10 @@ def ticQuery(star, radius=2, Vmax=18, outFile=None):
                 f.write(f"{row['ra']:.6f} {row['dec']:.6f} {row['Vmag']:.3f}\n")
 
     # That's it!
-                
     return results
 
 
-
-
-
 def gaiaQuery(star):
-
     """Query Gaia for a named star and return the Gaia DR2 ID.
 
     Parameters
@@ -336,7 +324,6 @@ def gaiaQuery(star):
     gaia_id : int
         The Gaia DR2 ID of the star.
     """
-
     # Query for target star
     result_table = Simbad.query_objectids(star)
     if result_table is None:
@@ -350,95 +337,76 @@ def gaiaQuery(star):
     raise LookupError(f"No Gaia DR2 ID for {star} (probably a multiple star)")
 
 
-def simbadQuery(star, radius=60, maglim=21):
 
+def simbadQuery(star, radius=60, maglim=21):
     """Query Gaia for a named star and return the Gaia DR2 ID.
 
     Parameters
     ----------
     star : str
         Name of the star to query around.
+    radius : float
+        Angular radius to query for stellar contaminants.
+    maglim : float
+        Magnitude limit to query for stellar contaminants.
 
     Returns
     -------
     gaia_id : int
         The Gaia DR2 ID of the star.
     """
-
     # Qucik check that target star exist
     result_table = Simbad.query_objectids(star)
     if result_table is None:
-        raise LookupError(f"No Simbad results for {star} (probably not a star)")
+        raise LookupError(f"No Simbad results for {star} (check if name exist on Simbad)..")
 
     # Fetch the equatorial coordinates
-    Simbad.reset_votable_fields()
-    Simbad.remove_votable_fields('coordinates')
-    Simbad.add_votable_fields('ra(:;A;ICRS;J2000)', 'dec(:;D;ICRS;2000)')
+    #Simbad.reset_votable_fields()
     table = Simbad.query_object(star, wildcard=False)
-    coord = SkyCoord(ra=['{}h{}m{}s'.format(*ra.split(':')) for ra in table['RA___A_ICRS_J2000']], 
-                     dec=['{}d{}m{}s'.format(*dec.split(':')) for dec in table['DEC___D_ICRS_2000']],
-                     frame='icrs', equinox='J2000')
-    raStar  = coord.ra.degree[0]
-    decStar = coord.dec.degree[0]
+    ra_source, dec_source = table['ra'][0], table['dec'][0]
 
     # Convert radius to from arcsec to deg
     radius /= 3600.
 
+    # Launch Gaia query     
     query_cone = f"""SELECT 
-    DISTANCE( POINT({raStar},{decStar}), POINT(ra,dec) )
+    DISTANCE( POINT({ra_source},{dec_source}), POINT(ra,dec) )
     AS dis, source_id, ra, dec,
     phot_g_mean_mag, bp_rp,
     parallax, parallax_error,
     pmra, pmdec, ruwe,
     teff_gspphot, logg_gspphot
     FROM gaiadr3.gaia_source AS cat
-    WHERE 1=CONTAINS(POINT({raStar}, {decStar}),
+    WHERE 1=CONTAINS(POINT({ra_source}, {dec_source}),
     CIRCLE(cat.ra, cat.dec, {radius}))
     AND cat.phot_g_mean_mag < {maglim} 
     ORDER BY dis ASC
     """
-
-    # Launch Gaia query 
-
     job     = Gaia.launch_job(query_cone)
     results = job.get_results()
 
     # Convert astropy results table into pandas df
-
     df = results.to_pandas()
 
     # Rename columns
-
-    df = df.rename(columns={'SOURCE_ID': 'gaiaDR3',
-                            'phot_g_mean_mag': 'Gmag',
-                            'bp_rp': 'BP_RP',
-                            'parallax': 'plx',
-                            'parallax_error': 'plxe',
-                            'teff_gspphot': 'teff',
-                            'logg_gspphot': 'logg'})
-
-    
-    # Make sure that target is the first entry    
-    # for row in result_table:
-    #     if 'source_id' in row['ID']:
-    #         gaia_id = int(row['ID'][9:])            
-    # row = df.index[df['source_id'] == gaia_id].tolist()
-    # dex = row + [i for i in range(len(df)) if i != row[0]]
-    # df = df.iloc[dex].reset_index(drop=True)
+    df = df.rename(columns={
+        'source_id': 'gaiaDR3',
+        'phot_g_mean_mag': 'Gmag',
+        'bp_rp': 'BP_RP',
+        'parallax': 'plx',
+        'parallax_error': 'plxe',
+        'teff_gspphot': 'teff',
+        'logg_gspphot': 'logg',
+    })
 
     # Convert Gmag to Pmag
-
     df['Pmag'] = ut.passbandConversionG2P(df.Gmag, df.BP_RP)
     
     # Relocate distance column [arcsec]
-    
     df.dis = (df.dis-df.dis.iloc[0]) * 3600.
 
-    # Sort and return
-    
+    # Sort and return    
     return df.sort_values(by=['dis'])
-
-
 
 
 
@@ -447,7 +415,6 @@ def gaiaQueryCone(ra, dec, radius=1,
                   flag_stellar=False,
                   flag_variable=False,
                   flag_quasar=False):
-
     """Query sky cone region using Gaia DR3.
 
     Parameters
@@ -460,7 +427,7 @@ def gaiaQueryCone(ra, dec, radius=1,
     gaia_id : int
         The Gaia DR2 ID of the star.
     """
-
+    
     # Fetch requested Gaia columns
     columns = _fetch_gaia_columns(flag_stellar, flag_variable, flag_quasar)
 
@@ -511,18 +478,15 @@ def gaiaQueryCone(ra, dec, radius=1,
 
 
 
-
-
 def gaiaQueryID(source_id, ra, dec, radius=0.01,
                 flag_stellar=False, flag_variable=False, flag_quasar=False,
                 ofile=False):
-
     """Function to query a target using it's Gaia DR3 ID.
     
     Parameters
     ----------
     source_id : int64, ndarray
-=        Gaia DR3 source ID(s)
+        Gaia DR3 source ID(s)
     ofile : str
         File name (without file extension) to be saved
 
@@ -578,7 +542,6 @@ def gaiaQueryRegion(ra, dec, radius=1,
                     mag_min=0, mag_max=17,
                     flag_stellar=False, flag_variable=False, flag_quasar=False,
                     ofile=False):
-
     """Function to query a circular sky region from Gaia DR3.
     
     Parameters
@@ -616,7 +579,6 @@ def gaiaQueryRegion(ra, dec, radius=1,
 
     # Fetch requested Gaia columns
     columns = _fetch_gaia_columns(flag_stellar, flag_variable, flag_quasar)
-
     
     if flag_quasar:
         query = f"""SELECT TOP 100000000

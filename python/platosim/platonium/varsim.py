@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-
 """
 This script is an integrated part of PlatoSim's toolkit PLATOnium. 
 Given a star and a planet this script creates a synthetic stellar
@@ -203,10 +202,6 @@ class VarSim(object):
         
         # Binary mode
         self.eb = args.eb
-
-        # SMBHBB
-        # self.smbhb = args.smbhb
-        # self.smbhb_params = args.smbhb_params
         
         # Limb darkening model
         self.ldms = ['linear', 'quadratic', 'squareroot', 'power2']
@@ -302,7 +297,8 @@ class VarSim(object):
         else:
             cadence = 25 / 86400.
 
-        # Parsing "quarter" overwrites "time"
+        # Time start and duration
+        # NOTE Parsing "quarter" overwrites "time"
         # NOTE Default is Q1 (t=0 and 91 days duration)
         if args.quarter:
             Q = ut.convertQuarterRange(args.quarter)
@@ -351,7 +347,6 @@ class VarSim(object):
             print(f'Simulating {self.instrument} bandpass  : ' +
                   f'{self.wvl_tele[0]} - {self.wvl_tele[-1]}')
 
-            
     #--------------------------------------------------------------#
     #                     BENCHMARK STARS/PLANETS                  #
     #--------------------------------------------------------------#
@@ -623,7 +618,7 @@ class VarSim(object):
         #--------------------------------------------
         
         if source == 'Earth':
-            # 
+            # Parameters are drawn from astropy
             params = {'t0': 10 * u.d,
                       'P' : 365.25 * u.d,
                       'e' : 0.0167,
@@ -636,7 +631,7 @@ class VarSim(object):
                       'dT': 50. * u.K}
 
         if source == 'Neptune':
-            # 
+            # Parameters are drawn from Wikipedia
             params = {'t0': 10 * u.d,
                       'P' : 365.25 * u.d,
                       'e' : 0.0167,
@@ -852,7 +847,7 @@ class VarSim(object):
         
         # Consistnecy check
         if self.verbose > 1:
-            Lum = 4*np.pi*(R.cgs.value)**2 * np.trapz(self.flux_star, self.wvl_star)
+            Lum = 4*np.pi*(R.cgs.value)**2 * np.trapezoid(self.flux_star, self.wvl_star)
             print(f'Theoretical luminosity : {L.to("erg/s"):.3e}')
             print(f'Synthetic   luminosity : {Lum * u.erg/u.s:.3e}\n')            
 
@@ -883,11 +878,10 @@ class VarSim(object):
     def passband_correction(self, passband_a='plato', passband_b='kepler'):
         """Fetch passband data.
         """
-
         # Fetch passbands
         N = 10000
-        wave_a, tran_a = ut.get_passband(passband_a, response='absolute', interpolate=True, n=N)
-        wave_b, tran_b = ut.get_passband(passband_b, response='absolute', interpolate=True, n=N)
+        wave_a,tran_a = ut.get_passband(passband_a, response='absolute', interpolate=True, n=N)
+        wave_b,tran_b = ut.get_passband(passband_b, response='absolute', interpolate=True, n=N)
 
         # Fetch stellar spectrum
         wave_star = self.wvl_star / 10 # [AA -> nm]
@@ -926,9 +920,8 @@ class VarSim(object):
         #-------------------------------------------------
 
         # Integrate to find ratio for correction
-        F_a = np.trapz(flux_tran_a, wave_equi_a)
-        F_b = np.trapz(flux_tran_b, wave_equi_b)
-
+        F_a = np.trapezoid(flux_tran_a, wave_equi_a)
+        F_b = np.trapezoid(flux_tran_b, wave_equi_b)
         return F_a / F_b
 
 
@@ -940,8 +933,7 @@ class VarSim(object):
 
         This function uses the model grid method described in Sarkar+2018:
         https://academic.oup.com/mnras/article/481/3/2871/5092616
-        """
-        
+        """        
         # Load parameters
         Teff = self.Teff.value
         logg = self.logg
@@ -952,8 +944,8 @@ class VarSim(object):
         tran_tele = self.tra_tele
         
         # Measure bolometric luminosity from SED [ergs/s]
-        L1_bolometric = 4*np.pi*(R.cgs.value)**2 * np.trapz(self.flux1_in, self.wvl1_in)
-        L2_bolometric = 4*np.pi*(R.cgs.value)**2 * np.trapz(self.flux2_in, self.wvl2_in)
+        L1_bolometric = 4*np.pi*(R.cgs.value)**2 * np.trapezoid(self.flux1_in, self.wvl1_in)
+        L2_bolometric = 4*np.pi*(R.cgs.value)**2 * np.trapezoid(self.flux2_in, self.wvl2_in)
         
         # Luminosity amplitude gradient in passband
         dex_wvl_min = ut.findNearestIndex(self.wvl_star, wvl_tele[0])
@@ -967,10 +959,10 @@ class VarSim(object):
                            (self.flux2_in[dex_wvl_max] + self.flux2_in[dex_wvl_min]) / 2.)
         else:
             L1_passband = (4*np.pi * (R.cgs.value)**2 *
-                           np.trapz(self.flux1_in[dex_wvl_min:dex_wvl_max],
+                           np.trapezoid(self.flux1_in[dex_wvl_min:dex_wvl_max],
                                      self.wvl1_in[dex_wvl_min:dex_wvl_max]))
             L2_passband = (4*np.pi * (R.cgs.value)**2 *
-                           np.trapz(self.flux2_in[dex_wvl_min:dex_wvl_max],
+                           np.trapezoid(self.flux2_in[dex_wvl_min:dex_wvl_max],
                                      self.wvl2_in[dex_wvl_min:dex_wvl_max]))
         
         # Bolometric cofficient
@@ -1377,7 +1369,6 @@ class VarSim(object):
         This function uses precomputed models of RR Lyrae stars 
         to generate the light curve from their harmonics.
         """
-
         if self.verbose > 1:
             errorcode('module', '\nRR Lyrae pulsator\n')
 
@@ -1408,10 +1399,8 @@ class VarSim(object):
         
 
     def star_ceph(self):
-
         """Generate ligth curve for Cepheid stars.
         """
-
         if self.verbose > 1:
             errorcode('module', '\nCepheid pulsator\n')
 
@@ -1442,10 +1431,8 @@ class VarSim(object):
 
         
     def star_lpv(self):
-
         """Generate light curves for LPV stars.
         """
-
         # Start script
         if self.verbose > 1:
             errorcode('module', '\nLong Period Variable (LPV)\n')
@@ -2068,7 +2055,6 @@ class VarSim(object):
 
         
     def planet_beaming(self):
-
         """Doppler beaming model.
 
         TODO Implement into class
@@ -2097,7 +2083,6 @@ class VarSim(object):
 
 
     def planet_ellipsoidal(self):
-
         """Model ellipsoidal distortion.
 
         TODO Implement into class
@@ -2124,31 +2109,35 @@ class VarSim(object):
 
         
     def plot_phase_curve(self):
-
+        """Function to make combined planet eclipse plot.
+        """
         # Plot exoplanet model
         if (self.time[-1] >= self.P.to('d') + self.t0.to('d')):
-            fig, ax = pt.plotOrbitalPhaseCurve(self.time.value,
-                                               self.lc['tran'].to_numpy(),
-                                               self.lc['occu'].to_numpy(),
-                                               self.lc['beam'].to_numpy(),
-                                               self.lc['elli'].to_numpy(),
-                                               self.t0.to('d').value,
-                                               self.P.to('d').value,
-                                               self.dt_c.to('d').value,
-                                               self.t0_tra_cen.to('d').value,
-                                               self.t_tra_tot.to('d').value,
-                                               self.t0_occ_cen.to('d').value,
-                                               self.t_occ_tot.to('d').value,
-                                               self.A_beam, self.A_elli)
-            plt.show()
-            
+            try:
+                fig, ax = pt.plotOrbitalPhaseCurve(self.time.value,
+                                                   self.lc['tran'].to_numpy(),
+                                                   self.lc['occu'].to_numpy(),
+                                                   self.lc['beam'].to_numpy(),
+                                                   self.lc['elli'].to_numpy(),
+                                                   self.t0.to('d').value,
+                                                   self.P.to('d').value,
+                                                   self.dt_c.to('d').value,
+                                                   self.t0_tra_cen.to('d').value,
+                                                   self.t_tra_tot.to('d').value,
+                                                   self.t0_occ_cen.to('d').value,
+                                                   self.t_occ_tot.to('d').value,
+                                                   self.A_beam, self.A_elli)
+            except:
+                pass
+            else:
+                plt.show()
+                
         elif (self.time[-1] < self.P.to('d') + self.t0.to('d')):
             errorcode('warning',
                       'No phase plot, time series is shorter than the orbital period!')
 
 
     def moon_transit(self):
-
         """Model exomoon transits.
 
         In the following the exomoon transits are being modelled with Pandora:
@@ -2157,7 +2146,7 @@ class VarSim(object):
         NOTE: t0 and P can principly be anything as long as they are consistant. 
         Here we make sure to use consistent reference time unit.
 
-        FIXME This module are under construction!
+        TODO This module are under construction!
         """
 
         import pandoramoon as pandora
@@ -2262,7 +2251,8 @@ class VarSim(object):
     #--------------------------------------------------------------#
         
     def run_prolog(self):
-        
+        """Simulation prologue and savings.
+        """
         if self.verbose > 1:
             errorcode('module', '\nPrologue\n')
 
