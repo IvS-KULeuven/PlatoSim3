@@ -280,7 +280,7 @@ class VarSim(object):
 
         # Data (download) for usage of varsim
         if not Path(self.idir + '/passband_plato.txt').is_file():
-            errorcode('message', 'Inuaguration: Welcome to the VarSim!')
+            errorcode('message', 'Inauguration: Welcome to the VarSim!')
             print(f'Downloading a few prerequisite files')
             ut.downloadFromFTP('passband_plato.txt',       self.idir)
             ut.downloadFromFTP('passband_cheops.txt',      self.idir)

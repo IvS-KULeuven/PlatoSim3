@@ -319,7 +319,7 @@ General notes:
         # Input directory        
         self.inputDir = Path(os.getenv("PLATO_PROJECT_HOME")) / 'inputfiles/data_picsim'
         if not self.inputDir.is_dir():
-            errorcode('message', '\nInuaguration: Welcome to PIC of Destiny!')
+            errorcode('message', '\nInauguration: Welcome to PIC of Destiny!')
 
         # Name space for output files
         # Default is to use the latest PIC catalog saved
