@@ -3633,30 +3633,28 @@ def plotSubfieldAnimation(filename, outputFileName=False, cadence=25,
     f = h5py.File(filename, "r")
     simfile = SimFile(filename)
 
-    # Fetch the image names
-    imgNames   = list(f['Images'].keys())
-    imgNumbers = list(range(int(imgNames[0][5:]), int(imgNames[-1][5:])))
-    N          = len(imgNames)
+    # All images are stored in one dataset: (exposure, row, column).
+    # Index i holds exposure number BeginExposureNr + i.
+    images     = f['Images/subfield']
+    firstNr    = simfile.getFirstExposureNr()
+    imgIndices = list(range(images.shape[0]))
+    imgNumbers = [firstNr + i for i in imgIndices]
 
     # Skip N images to make animation faster
     if skipNimages is not None:
-        imgNames   = imgNames[0::skipNimages]
+        imgIndices = imgIndices[0::skipNimages]
         imgNumbers = imgNumbers[0::skipNimages]
-
-    # Fetch StarPosition keys (i.e. "Exposure000000", etc)
-    # TODO remove time column: -1 because Time is last column
-    exposureGroupNames = list(f['StarPositions'].keys())[:-1]
 
     # Plot the image. Note that pixel coordinates start at the left bottom side of each pixel.
 
     ims = []
     fig, ax = plt.subplots(1,1,figsize=figsize)
 
-    for imgNumber, imgName in zip(tqdm(imgNumbers, bar_format=ut.tqdmBar()), imgNames):
+    for imgNumber, imgIndex in zip(tqdm(imgNumbers, bar_format=ut.tqdmBar()), imgIndices):
 
         # Fetch each pixel image
-        
-        image = f["Images/{0}".format(imgName)]
+
+        image = images[imgIndex]
 
         # Fetch image dimention first time only
         

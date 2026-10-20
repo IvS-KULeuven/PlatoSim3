@@ -1025,10 +1025,12 @@ def undistortedToDistortedFocalPlaneCoordinates(xFPmm, yFPmm, distortionCoeffici
 
 def mappedUndistortedToDistortedFocalPlaneCoordinates(xFPmm, yFPmm, pathToPsfFile, focalLength=None):
 
-    """From mapped undistorted to distorted focal plane coordinates.
+    """
+    From mapped undistorted to distorted focal plane coordinates.
 
     Convert from undistorted to distorted normalized focal plane
     coordinates using a mapped distortion model.
+    Works for a single point (floats) as well as for many points at once (arrays).
 
     Notes
     -----
@@ -1036,24 +1038,37 @@ def mappedUndistortedToDistortedFocalPlaneCoordinates(xFPmm, yFPmm, pathToPsfFil
     For detectors that use analytic PSF use the function:
     undistortedToDistortedFocalPlaneCoordinates
 
+    For each point, the closest grid point of the coordinates map is taken in
+    each of the four quadrants around it (left-bottom, left-top, right-bottom,
+    right-top). The distorted position is the weighted average of the distorted
+    positions of these four grid points, where each weight is the area of the
+    rectangle between the point and the opposite grid point.
+    Points further than 80 mm from the centre of the focal plane, or that do not
+    have a grid point in all four quadrants, are returned undistorted.
+
     Parameters
     ----------
-    xFPmm : float
-        Undistorted x-coordinate in the FP reference frame [mm]
-    yFPmm : float
-        Undistorted y-coordinate in the FP reference frame [mm]
+    xFPmm : float, ndarray
+        Undistorted x-coordinate(s) in the FP reference frame [mm]
+    yFPmm : float, ndarray
+        Undistorted y-coordinate(s) in the FP reference frame [mm]
     pathToFoPsfFile : str
         Absolute path to the PSF file (HDF5) that the Coordinates map
+    focalLength : float
+        Focal length [mm]. Only needed if the PSF file has no "Coordinates map".
 
     Return
     ------
-    xFPdist : float
-        Distorted focal plane x-coordinate [mm]
-    yFPdist : float
-        Distorted focal plane y-coordinate [mm]
+    xFPdist : float, ndarray
+        Distorted focal plane x-coordinate(s) [mm]
+    yFPdist : float, ndarray
+        Distorted focal plane y-coordinate(s) [mm]
     """
-    # If radial distance is above 80 mm
-    if (xFPmm**2 + yFPmm**2 > 80**2):
+
+    # For a single point outside 80 mm, return it unchanged (as before, without reading the file)
+
+    isScalar = np.ndim(xFPmm) == 0 and np.ndim(yFPmm) == 0
+    if isScalar and (xFPmm**2 + yFPmm**2 > 80**2):
         return xFPmm, yFPmm
 
     # Check the path to the PSF file excists
@@ -1064,121 +1079,87 @@ def mappedUndistortedToDistortedFocalPlaneCoordinates(xFPmm, yFPmm, pathToPsfFil
         else:
             print(f"Error: {pathToPsfFile} is not a valid path name for mapped PSF")
 
-    # We open the psf file where the coordinate transformation matrix should be in.
-    # If the matrix isn't in the file, we raise an error.
+    # Read the undistorted and distorted grid points from the PSF file.
+    # If the file has no "Coordinates map", build it from the PSF attributes.
 
-    psfFile = h5py.File(pathToPsfFile, "r")
-    if not "Coordinates map" in psfFile.keys():
-        if False:
-            print("Error: No transformation map given in psf file, mapped distortion is not possible.")
-            return
+    with h5py.File(pathToPsfFile, "r") as psfFile:
+        if "Coordinates map" in psfFile.keys():
+            coordMap = psfFile["Coordinates map"]
         else:
             coordMap = generateDistortionTable(psfFile, focalLength)
-    else:
-        coordMap = psfFile["Coordinates map"]
+        xUndis = np.asarray(coordMap["Undistorted"]["x"][...], dtype=float)
+        yUndis = np.asarray(coordMap["Undistorted"]["y"][...], dtype=float)
+        xDist  = np.asarray(coordMap["Distorted"]["x"][...],   dtype=float)
+        yDist  = np.asarray(coordMap["Distorted"]["y"][...],   dtype=float)
 
-    # Calculate the distance of the undist coordinates wrt input coordinates
+    # Work with arrays from here on
 
-    undistorted = coordMap["Undistorted"]
-    x = undistorted["x"]
-    y = undistorted["y"]
+    x = np.atleast_1d(np.asarray(xFPmm, dtype=float))
+    y = np.atleast_1d(np.asarray(yFPmm, dtype=float))
+    xFPdist = x.copy()
+    yFPdist = y.copy()
 
-    if not "Coordinates map" in psfFile.keys():
-        xUndis = x
-        yUndis = y
-    else:
-        xUndis = np.zeros(x.shape, x.dtype)
-        yUndis = np.zeros(y.shape, y.dtype)
-        x.read_direct(xUndis)
-        y.read_direct(yUndis)
+    # Only points within 80 mm are distorted
 
-    distorted = coordMap["Distorted"]
+    todo = np.flatnonzero(x**2 + y**2 <= 80**2)
 
-    x = distorted["x"]
-    y = distorted["y"]
+    # Process the points in blocks, to limit the size of the (points x grid points) matrices
 
+    blockSize = max(1, 2_000_000 // max(1, len(xUndis)))
 
-    if not "Coordinates map" in psfFile.keys():
-        xDist = x
-        yDist = y
-    else:
-        xDist = np.zeros(x.shape, x.dtype)
-        yDist = np.zeros(y.shape, y.dtype)
-        x.read_direct(xDist)
-        y.read_direct(yDist)
+    for start in range(0, len(todo), blockSize):
 
-    distanceFromPointx = np.array([x - xFPmm for x in xUndis])
-    distanceFromPointy = np.array([y - yFPmm for y in yUndis])
-    aDistanceFromPoint  = np.array([ x**2 + y**2
-        for x, y in zip(distanceFromPointx, distanceFromPointy)])
+        index = todo[start:start + blockSize]
+        px = x[index][:, np.newaxis]
+        py = y[index][:, np.newaxis]
 
-    # We should select the closest four undistorted points to the input point
+        # Distance of every grid point to every point (rows: points, columns: grid points)
 
-    idx = np.arange(len(distanceFromPointx))
-    idx_selected = np.empty(4, dtype=np.int16)
+        dx = xUndis[np.newaxis, :] - px
+        dy = yUndis[np.newaxis, :] - py
+        d2 = dx**2 + dy**2
 
-    idx_left = idx[distanceFromPointx < 0]
-    idx_right = idx[distanceFromPointx >= 0]
+        # Closest grid point in each quadrant: left-bottom, left-top, right-bottom, right-top
 
-    leftDistanceFromPointy  = distanceFromPointy[distanceFromPointx < 0]
-    rightDistanceFromPointy = distanceFromPointy[distanceFromPointx >= 0]
+        left   = dx < 0
+        bottom = dy < 0
+        quadrants = [left & bottom, left & ~bottom, ~left & bottom, ~left & ~bottom]
 
-    left_bottom_idx = idx_left[leftDistanceFromPointy < 0]
-    if (len(left_bottom_idx) == 0):
-        return xFPmm, yFPmm
-    else:
-        idx_closest_idx = np.argmin(aDistanceFromPoint[left_bottom_idx])
-        idx_selected[0] = left_bottom_idx[idx_closest_idx]
+        selected = np.empty((len(index), 4), dtype=int)
+        complete = np.ones(len(index), dtype=bool)
+        for q, inQuadrant in enumerate(quadrants):
+            d2q = np.where(inQuadrant, d2, np.inf)
+            selected[:, q] = np.argmin(d2q, axis=1)
+            complete &= inQuadrant.any(axis=1)
 
-    left_top_idx    = idx_left[leftDistanceFromPointy >=0]
-    if (len(left_top_idx) == 0):
-        return xFPmm, yFPmm
-    else:
-        idx_closest_idx = np.argmin(aDistanceFromPoint[left_top_idx])
-        idx_selected[1] = left_top_idx[idx_closest_idx]
+        # Within each (left, right) pair, put the lowest grid point first
 
-    right_bottom_idx = idx_right[rightDistanceFromPointy < 0]
-    if (len(right_bottom_idx) == 0):
-        return xFPmm, yFPmm
-    else:
-        idx_closest_idx  = np.argmin(aDistanceFromPoint[right_bottom_idx])
-        idx_selected[2]  = right_bottom_idx[idx_closest_idx]
+        for i in range(2):
+            swap = yUndis[selected[:, 2*i]] > yUndis[selected[:, 2*i+1]]
+            selected[swap, 2*i], selected[swap, 2*i+1] = selected[swap, 2*i+1], selected[swap, 2*i]
 
-    right_top_idx = idx_right[rightDistanceFromPointy >= 0]
-    if (len(right_top_idx) == 0):
-        return xFPmm, yFPmm
-    else:
-        idx_closest_idx = np.argmin(aDistanceFromPoint[right_top_idx])
-        idx_selected[3] = right_top_idx[idx_closest_idx]
+        # Weights: area of the rectangle between the point and the opposite grid point
 
-    for i in np.arange(2):
-        if (yUndis[idx_selected[2*i]] > yUndis[idx_selected[2*i+1]]):
-            dummy = idx_selected[2*i]
-            idx_selected[2*i] = idx_selected[2*i+1]
-            idx_selected[2*i+1] = dummy
+        closestX = xUndis[selected]
+        closestY = yUndis[selected]
+        opposite = [3, 2, 1, 0]
+        constants = np.abs((closestX[:, opposite] - px) * (closestY[:, opposite] - py))
+        constants = constants / constants.sum(axis=1, keepdims=True)
 
-    closestX = np.array([ xUndis[i] for i in idx_selected])
-    closestY = np.array([ yUndis[i] for i in idx_selected])
+        # Weighted average of the distorted grid points
 
-    # We can write the points (xFPmm, yFPmm) as a linear combination of the
-    # four closests points around this point.
+        newX = np.sum(constants * xDist[selected], axis=1)
+        newY = np.sum(constants * yDist[selected], axis=1)
 
-    oPointIdx = [3, 2, 1, 0]
+        # Points without a grid point in all four quadrants stay undistorted
 
-    constants = [abs( (closestX[oPointIdx[i]] - xFPmm) *
-                      (closestY[oPointIdx[i]] - yFPmm))
-                 for i in np.arange(4)]
-
-    constants = [ constant / sum(constants) for constant in constants]
-
-    closestXdist = np.array([ xDist[i] for i in idx_selected])
-    closestYdist = np.array([ yDist[i] for i in idx_selected])
-
-    xFPdist = sum([constants[i]*closestXdist[i] for i in np.arange(4)])
-    yFPdist = sum([constants[i]*closestYdist[i] for i in np.arange(4)])
+        xFPdist[index[complete]] = newX[complete]
+        yFPdist[index[complete]] = newY[complete]
 
     # That's it!
 
+    if isScalar:
+        return xFPdist[0], yFPdist[0]
     return xFPdist, yFPdist
 
 
@@ -1254,13 +1235,15 @@ def distortedToUndistortedFocalPlaneCoordinates(xFPdist, yFPdist,
 
 
 
-def mappedDistortedToUndistortedFocalPlaneCoordinates(xFPdist, yFPdist, pathToPsfFile, focalLength=None):
+def mappedDistortedToUndistortedFocalPlaneCoordinates(xFPdist, yFPdist, pathToPsfFile, focalLength=None,
+                                                      tolerance=1e-5):
 
     """
     From mapped distorted to undistorted focal plane coordinates.
 
     Convert from distorted to undistorted normalized focal plane coordinates
     using the mapped distortion model.
+    Works for a single point (floats) as well as for many points at once (arrays).
 
     Notes
     -----
@@ -1268,60 +1251,80 @@ def mappedDistortedToUndistortedFocalPlaneCoordinates(xFPdist, yFPdist, pathToPs
     mapped distortion model. For detectors that use analytic PSF use the function:
     distortedToUndistortedFocalPlaneCoordinates.
 
+    The undistorted position is found by an iterative search: starting from (0, 0),
+    each coordinate is moved towards the target by a step that shrinks by a factor
+    0.6 every iteration, until the distorted position is within `tolerance` of the
+    target (sum of x and y differences) or after 160 iterations. All points take
+    the same steps, but each point stops on its own, at the position that passed
+    the check.
+
+    Near the edge of the coordinates map the forward distortion jumps to zero
+    (see mappedUndistortedToDistortedFocalPlaneCoordinates), so there distorted
+    positions may have no exact inverse and the search may not converge.
+
     Parameters
     ----------
-    xFPdist : float
-        Distorted focal plane x-coordinate [mm]
-    yFPdist : float
-        Distorted focal plane y-coordinate [mm]
+    xFPdist : float, ndarray
+        Distorted focal plane x-coordinate(s) [mm]
+    yFPdist : float, ndarray
+        Distorted focal plane y-coordinate(s) [mm]
     pathToFoPsfFile : hdf5 file
         Absolute path to the PSF file that the Coordinates map
+    focalLength : float
+        Focal length [mm]. Only needed if the PSF file has no "Coordinates map".
+    tolerance : float
+        Stop when |dx| + |dy| between the distorted guess and the target is
+        below this value [mm]. Default: 1e-5 mm (5.6e-4 pixel of 18 micron).
 
     Return
     ------
-    xFPmm : float
-        Distorted x-coordinate in the FP reference frame [mm]
-    yFPmm : float
-        Distorted y-coordinate in the FP reference frame [mm]
+    xFPmm : float, ndarray
+        Undistorted x-coordinate(s) in the FP reference frame [mm]
+    yFPmm : float, ndarray
+        Undistorted y-coordinate(s) in the FP reference frame [mm]
     """
 
-    delta  = 100.
-    length = 80.
-    x0 = 0
-    y0 = 0
-    i  = 0
+    isScalar = np.ndim(xFPdist) == 0 and np.ndim(yFPdist) == 0
+    xTarget  = np.atleast_1d(np.asarray(xFPdist, dtype=float))
+    yTarget  = np.atleast_1d(np.asarray(yFPdist, dtype=float))
 
-    while((delta > .001) and (i<160)):
-        xDist, yDist = mappedUndistortedToDistortedFocalPlaneCoordinates(x0, y0, pathToPsfFile, focalLength)
+    x0 = np.zeros(xTarget.shape)
+    y0 = np.zeros(yTarget.shape)
+    length = 80.
+
+    # Points that are still being searched for
+
+    active = np.arange(len(xTarget))
+
+    for i in range(160):
+
+        if len(active) == 0:
+            break
+
+        # Distorted position of the current guesses
+
+        xDist, yDist = mappedUndistortedToDistortedFocalPlaneCoordinates(x0[active], y0[active],
+                                                                         pathToPsfFile, focalLength)
         length = 3*length / 5
 
-        if (xFPdist > xDist):
-            if ((x0 + length) > 85):
-                x0 = 85
-            else:
-                x0 = x0 + length
-        elif (xFPdist < xDist):
-            if ((x0 - length) < -85):
-                x0 = -85
-            else:
-                x0 = x0 - length
+        # Stop the points whose distorted position is close enough to the target,
+        # keeping the guess that passed the check
 
-        if (yFPdist > yDist):
-            if ((y0 + length) > 85):
-                y0 = 85
-            else:
-                y0 = y0 + length
-        elif (yFPdist < yDist):
-            if ((y0 - length) < -85):
-                y0 = -85
-            else:
-                y0 = y0 - length
+        xT, yT = xTarget[active], yTarget[active]
+        delta  = np.abs(xT - xDist) + np.abs(yT - yDist)
+        keepGoing = delta > tolerance
+        active, xT, yT = active[keepGoing], xT[keepGoing], yT[keepGoing]
+        xDist, yDist   = xDist[keepGoing], yDist[keepGoing]
 
+        # Move the other guesses towards the target, staying within [-85, 85] mm
 
-        delta = abs(xFPdist - xDist) + abs(yFPdist - yDist)
+        x0[active] = np.where(xT > xDist, np.minimum(x0[active] + length,  85),
+                     np.where(xT < xDist, np.maximum(x0[active] - length, -85), x0[active]))
+        y0[active] = np.where(yT > yDist, np.minimum(y0[active] + length,  85),
+                     np.where(yT < yDist, np.maximum(y0[active] - length, -85), y0[active]))
 
-        i += 1
-
+    if isScalar:
+        return x0[0], y0[0]
     return x0, y0
 
 
