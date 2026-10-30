@@ -64,9 +64,6 @@ from platosim.utilities  import errorcode
 from platosim.simulation import Simulation
 from platosim.matplotlibrc import setup; setup()         
 
-# Turn of specific Pandas warning
-pd.options.mode.chained_assignment = None
-
 #==============================================================#
 #                         BEGIN CLASS                          #
 #==============================================================#
