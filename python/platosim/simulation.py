@@ -1502,7 +1502,7 @@ class Simulation(object):
 
     def createVariableSourceList(self, starID, variableSourceFile, variableSourceList):
 
-        """Create a variable source file of a target star.
+        """Create a variable source file list of a target star.
         
         NOTE: This function will automatically create the 'variableSourceList()'
         needed in order for PlatoSim to include the variability. Furthermore, the
@@ -1510,21 +1510,22 @@ class Simulation(object):
 
         Paramters
         ---------
-        time : ndarray
-            Array with right ascensions of the stars [deg]
-        dmag : ndarray
-            Array with declination of the stars [deg]
-        variableSourceFile : str
-            Path of the star catalog file that will be written.
+        starID : list, ndarray
+            List or array with starIDs
+        variableSourceFile : list, ndarray
+            List or array with variable source file names
+        variableSourceList : str
+            Single string with path of the variable catalog list to be saveed
 
         Return
         ------
-        A file will be saved containing an ascii file with the columns
-        time and delta magnitude.
+        A file will be saved containing an ascii file.
         """
 
         # Check if only a single target is requested
-        
+
+        if isinstance(starID, str) or isinstance(starID, int):
+            starID = [starID]
         if isinstance(variableSourceFile, str):
             variableSourceFile = [variableSourceFile]
 
