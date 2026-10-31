@@ -1209,7 +1209,9 @@ class PLATOnium(object):
                 if self.varSourceFile.is_file():
                     # Automaticallt create and save varSourceList to file
                     self.varSourceList = f'{self.outputDir}/{self.outputFileName}.var'
-                    sim.createVariableSourceList(str(self.targetID), str(self.varSourceFile), self.varSourceList)
+                    sim.createVariableSourceList(self.targetID,
+                                                 str(self.varSourceFile),
+                                                 self.varSourceList)
                 else:
                     errorcode('error', 'VariableSourceFile do not exist, check file path!')
                 # Print to bash
