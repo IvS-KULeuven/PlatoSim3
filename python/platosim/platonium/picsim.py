@@ -58,7 +58,6 @@ from prettytable import PrettyTable
 # PlatoSim functions
 import platosim.plot      as pt
 import platosim.utilities as ut
-import platosim.starquery as sq
 import platosim.referenceFrames as rf
 from platosim.utilities  import errorcode
 from platosim.simulation import Simulation
@@ -840,6 +839,8 @@ General notes:
     def querySimbad(self):
         """Function to query a Gaia DR3 star and its contaminants.
         """
+        # Load module here to allow offline usage of --pic
+        import platosim.starquery as sq
         # Query Gaia DR3 star
         self.df_all = sq.simbadQuery(self.simbad, radius=self.disConLimit)
         if self.verbose > 1:
@@ -1083,6 +1084,8 @@ General notes:
         https://www.cosmos.esa.int/web/gaia-users/archive/programmatic-access
         """
         self.flag_combine = True
+        # Load module here to allow offline usage of --pic
+        import platosim.starquery as sq
 
         # QUERY CATALOGUE
         
