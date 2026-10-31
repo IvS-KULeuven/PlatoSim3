@@ -1716,7 +1716,7 @@ class PLATOnium(object):
 
         if self.verbose > 1:
             errorcode('message', '\n[psim2datastruc]: Pre-processing imagettes')
-        mag_err = 2.5*(self.pipeFluxError/100.)/np.log(10.)
+        mag_err = 2.5 * (self.pipeFluxError/100.) / np.log(10.)
         comm = f'psim2datastruc --cam-id {self.cameraID:02d} --prnu_err {self.pipePrnuError} --seed {self.seedTarget} --mag-error {mag_err} --centroid-err {self.pipeAbsCenError}'
         if self.pipeZarrOutput:
             comm += " --optimised_file_format"
@@ -1769,13 +1769,15 @@ class PLATOnium(object):
         # PRE-PROCESSING
         if self.verbose > 1:
             errorcode('message', '\n[psim2datastruc]: Pre-processing imagettes')
-        mag_err = 2.5*(self.pipeFluxError/100.)/np.log(10.)
+        mag_err = 2.5 * (self.pipeFluxError/100.) / np.log(10.)
         comm = f'psim2datastruc --cam-id {self.cameraID:02d} --prnu_err {self.pipePrnuError} --seed {self.seedTarget} --mag-error {mag_err} --centroid-err {self.pipeAbsCenError}'
         if self.pipeZarrOutput:
             comm += " --optimised_file_format"
         comm += f' --target_id {int(self.starID)} . {self.starID} {self.starID} 6'
-        print(os.getcwd())
-        print(comm)
+        # Debugging
+        if self.verbose > 2:
+            print(os.getcwd())
+            print(comm)
         cmd = os.system(comm)
         if cmd != 0:
             self.failed('psim2datastruc failed due to the above error!')
@@ -1837,8 +1839,10 @@ class PLATOnium(object):
         if self.pipeZarrOutput:
             comm += " --optimised_file_format"
         comm += f' --target_id {int(self.starID)} . {self.starID} {self.starID} 6'
-        print(os.getcwd())
-        print(comm)
+        # Debugging
+        if self.verbose > 2:
+            print(os.getcwd())
+            print(comm)
         cmd = os.system(comm)
         if cmd != 0:
             self.failed('psim2datastruc failed due to the above error!')
