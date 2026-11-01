@@ -1705,9 +1705,16 @@ class Pulsator(object):
     def initFromFile(self, odir, sample, starID=None, variable=None):
         """Draw pulsation modes from Kepler/TESS legacies.
         """
-
-        # Select sample
-        if sample == 'Gang2020':
+        # Select sample        
+        if sample == 'Pedersen2021':
+            suffix   = 'dat'
+            sep      = ' '
+            comment  = '#'
+            freq_unit = 'day'
+            ampl_unit = 'ppm'
+            filename = 'varsource_SPB_pedersen2021'
+        
+        elif sample == 'Gang2020':
             suffix   = 'dat'
             sep      = ' '
             comment  = '#'
@@ -1715,15 +1722,7 @@ class Pulsator(object):
             ampl_unit = 'norm'
             filename = 'varsource_gdor_gang2020'
             names    = ['freq', 'ampl', 'phase', 'snr']
-            
-        elif sample == 'Pedersen2021':
-            suffix   = 'dat'
-            sep      = ' '
-            comment  = '#'
-            freq_unit = 'day'
-            ampl_unit = 'ppm'
-            filename = 'varsource_SPB_pedersen2021'
-            
+                        
         elif sample == 'Bowman2018':
             suffix   = 'txt'
             sep      = '  '
@@ -1734,7 +1733,7 @@ class Pulsator(object):
             names    = ['niter', 'freq', 'freq_err', 'ampl', 'ampl_err', 
                         'phase', 'phase_err', 'snr']
             
-        elif sample == 'Bodi2023':
+        elif sample == 'Planchy2021':
             suffix   = 'fou'
             sep      = '  '
             comment  = None
@@ -1765,6 +1764,8 @@ class Pulsator(object):
         if sample == 'Pedersen2021':
             dn = np.loadtxt(starfile, comments=comment, usecols=[0,2,4])
             self.df = pd.DataFrame({'freq':dn[:,0], 'ampl':dn[:,1], 'phase':dn[:,2]})
+        elif sample in ['Bowman2018', 'Planchy2021']:
+            self.df = pd.read_csv(starfile, sep=sep, comment=comment, names=names, engine='python')
         else:
             self.df = pd.read_csv(starfile, sep=sep, comment=comment, names=names)
 
@@ -2024,7 +2025,6 @@ class Pulsator(object):
     def initMockaHeyAerts2024(self, odir):
         """Draw pulsation modes from TESS/Gaia BCEP legacy.
         """
-
         # Download file containing all modes of stars
         filename = 'varsim_mocka_bcep_heyaerts2024.ftr'
         filepath = Path(f'{odir}/{filename}')
@@ -2084,7 +2084,7 @@ class Pulsator(object):
         return self.df
 
 
-    def initMockaBodi2023(self, odir, variable):
+    def initMockaPlanchy2021(self, odir, variable):
         """Draw pulsation modes from TESS RRLYR star legacy.
         """
         suffix   = 'fou'
@@ -2098,10 +2098,10 @@ class Pulsator(object):
         # Check variable class
         if variable == 'RRLyr':
             filename = 'varsource_rrly_bodi2023'
-            self.starname = 'MOCKA: RR Lyr star (Bodi+2023) '
+            self.starname = 'MOCKA: RR Lyr star (Planchy+2021) '
         elif variable == 'Ceph':
             filename = 'varsource_ceph_bodi2023'
-            self.starname = 'MOCKA: Cepheid star (Bodi+2023) '
+            self.starname = 'MOCKA: Cepheid star (Planchy+2021) '
         else:
             errorcode('error', 'Not valid variable! Use "RRLyr" or "Ceph"')
         
