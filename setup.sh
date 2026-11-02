@@ -6,12 +6,6 @@ set -e
 # Set parsed arguments
 PLATO_WORKDIR=$1
 
-# Set global parameters
-POETRY=$HOME/.local/bin
-PLATO_SETUP=$PWD/.bash_profile
-PLATO_PROJECT_HOME=$PWD
-PLATONIUM=$PLATO_PROJECT_HOME/python/platosim/platonium
-
 # If no arguments are given write usage message
 if [ -z "$PLATO_WORKDIR" ] || [ "$1" = "-h" ] || [ "$1" = "--help" ]; then    
     echo ""
@@ -27,51 +21,57 @@ if [ -z "$PLATO_WORKDIR" ] || [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
     echo "Given the PLATO_WORDIR as input arguments, this script sets up your path"
     echo "environments so they are globally defined on your system."
     echo ""
-    echo "NOTE:"
-    echo "Only for Linux UNIX users!"
+    echo "NOTE: Only for Linux UNIX users!"
     echo ""    
     exit 1
     
 else
-
-    # SETUP PLATONIUM
+    # Sync for platonium
+    uv sync --all-groups
     
-    # Footprint of project setup (overwrite)
+    # Source the environment
+    source .venv/bin/activate
+    
+    # Set global parameters
+    PLATO_SETUP=$VIRTUAL_ENV/.bash_profile
+    PLATO_PROJECT_HOME=$PWD
+    PLATONIUM=$PLATO_PROJECT_HOME/python/platosim/platonium
+    
+    # Create setup file
     if [ -f "$PLATO_SETUP" ]; then
 	rm $PLATO_SETUP
     fi
-    
-    # Create setup file
     touch $PLATO_SETUP
-
-    # Export paths
     echo "#!/usr/bin/env bash"                                      >> $PLATO_SETUP
-    echo "export POETRY=$POETRY"                                    >> $PLATO_SETUP
     echo "export PLATO_PROJECT_HOME=$PWD"                           >> $PLATO_SETUP 
     echo "export PLATO_WORKDIR=$PLATO_WORKDIR"                      >> $PLATO_SETUP
     echo "export PYTHONPATH=$PYTHONPATH:$PLATO_PROJECT_HOME/python" >> $PLATO_SETUP
-    
+    echo "source $VIRTUAL_ENV/bin/activate"                         >> $PLATO_SETUP
+            
     # Add Write a bash_profile that will be loaded
-    #if grep -q "source $PLATO_SETUP" "$HOME/.bashrc"; then
     echo ""                                          >> $HOME/.bashrc
     echo "# >>> -- Export all PlatoSim paths -- <<<" >> $HOME/.bashrc
     echo "source $PLATO_SETUP"                       >> $HOME/.bashrc
     echo "# >>> ------------------------------- <<<" >> $HOME/.bashrc
-
+    
     # Add scripts to global executables
-    cp -rf $PLATONIUM/picsim.py             $CONDA_PREFIX/bin/picsim
-    cp -rf $PLATONIUM/varsim.py             $CONDA_PREFIX/bin/varsim
-    cp -rf $PLATONIUM/payload.py            $CONDA_PREFIX/bin/payload
-    cp -rf $PLATONIUM/platonium.py          $CONDA_PREFIX/bin/platonium
-    cp -rf $PLATONIUM/../scripts/migtool.py $CONDA_PREFIX/bin/migtool
-    cp -rf $PLATONIUM/../scripts/pdshow.py  $CONDA_PREFIX/bin/pdshow
+    cp -rf $PLATONIUM/picsim.py             $VIRTUAL_ENV/bin/picsim
+    cp -rf $PLATONIUM/varsim.py             $VIRTUAL_ENV/bin/varsim
+    cp -rf $PLATONIUM/payload.py            $VIRTUAL_ENV/bin/payload
+    cp -rf $PLATONIUM/platonium.py          $VIRTUAL_ENV/bin/platonium
+    cp -rf $PLATONIUM/../scripts/migtool.py $VIRTUAL_ENV/bin/migtool
+    cp -rf $PLATONIUM/../scripts/pdshow.py  $VIRTUAL_ENV/bin/pdshow
+    cp -rf $PLATONIUM/../scripts/yamlio.py  $VIRTUAL_ENV/bin/yamlio
+    cp -rf $PLATONIUM/../scripts/starcat2picsim.py  $VIRTUAL_ENV/bin/starcat2picsim
 
-    chmod +x $CONDA_PREFIX/bin/picsim
-    chmod +x $CONDA_PREFIX/bin/varsim
-    chmod +x $CONDA_PREFIX/bin/payload
-    chmod +x $CONDA_PREFIX/bin/platonium
-    chmod +x $CONDA_PREFIX/bin/migtool
-    chmod +x $CONDA_PREFIX/bin/pdshow
+    chmod +x $VIRTUAL_ENV/bin/picsim
+    chmod +x $VIRTUAL_ENV/bin/varsim
+    chmod +x $VIRTUAL_ENV/bin/payload
+    chmod +x $VIRTUAL_ENV/bin/platonium
+    chmod +x $VIRTUAL_ENV/bin/migtool
+    chmod +x $VIRTUAL_ENV/bin/pdshow
+    chmod +x $VIRTUAL_ENV/bin/yamlio
+    chmod +x $VIRTUAL_ENV/bin/starcat2picsim
     
     # PROLOGUE
         
@@ -89,8 +89,11 @@ else
     echo ""
     echo " See also help functions:"
     echo ""
-    echo ">> pdshow -h"    
+    echo ">> argos -h"    
+    echo ">> pdshow -h"
+    echo ">> yamlio -h"
     echo ">> migtool -h"
+    echo ">> starcat2picsim -h"
     echo ""
 
     # Reload .bashrc
