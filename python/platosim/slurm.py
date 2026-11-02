@@ -34,7 +34,7 @@ from platosim.utilities import errorcode
 def getJobScript(ids, groups, cameras, quarters,
                  nodes=1, cpusPerNode=36, memoryPerCore=184,
                  memoryPerSim=300, timePerSim=15, timeSafeLimit=1,
-                 ofile=False):
+                 ofile=False, verbose=True):
 
     """Function to create a SLURM job script to be used on the VSC.
 
@@ -160,8 +160,9 @@ def getJobScript(ids, groups, cameras, quarters,
             ofile.write(dedent(script).strip())
 
     # Print if simulation will run and if so, with what resources
-    print(f'Suggested SLURM job script for {numSim} individual simulations: ' +
-          f'nodes={nodes}, cores={cores}, mem={mem}Mb, walltime={walltime}')
+    if verbose:
+        print(f'Suggested SLURM job script for {numSim} individual simulations: ' +
+              f'nodes={nodes}, cores={cores}, mem={mem}Mb, walltime={walltime}')
 
     return script
 

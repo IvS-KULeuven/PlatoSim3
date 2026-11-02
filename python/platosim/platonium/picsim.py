@@ -363,7 +363,8 @@ General notes:
 
         # Fetch PIC catalogue from FTP server
         if not inputFileTar.is_file() or not inputFileCon.is_file():
-            print(f'Downloading {self.pic} catalogue..')
+            if self.verbose > 1:
+                print(f'Downloading {self.pic} catalogue..')
             ut.downloadFromFTP(inputFileTar.name, self.inputDir, 'plato')
             ut.downloadFromFTP(inputFileCon.name, self.inputDir, 'plato')
 
@@ -647,8 +648,13 @@ General notes:
         dc1 = pd.DataFrame()
         numConPerTar = np.zeros(self.numTargets)
 
-        for starNo in tqdm(range(self.numTargets), bar_format=ut.tqdmBar()):
-
+        # Loop over each target star
+        if self.verbose == 0:
+            argument = range(self.numTargets)
+        else:
+            argument = tqdm(range(self.numTargets), bar_format=ut.tqdmBar())
+            
+        for starNo in argument:
             # Find corresponding contaminants to our target
             dcc = dc[dc['PIC'] == df['PIC'].iloc[starNo]]
 

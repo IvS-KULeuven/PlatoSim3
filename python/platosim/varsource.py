@@ -1705,7 +1705,7 @@ class Pulsator(object):
     def initFromFile(self, odir, sample, starID=None, variable=None):
         """Draw pulsation modes from Kepler/TESS legacies.
         """
-        # Select sample        
+        # Select sample            
         if sample == 'Pedersen2021':
             suffix   = 'dat'
             sep      = ' '

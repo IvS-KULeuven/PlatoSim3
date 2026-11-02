@@ -105,7 +105,7 @@ Generate transits from parameters ("--planet_params <kwargs*>"):
 Besides producing variable templates for solar-like stars, it is
 also possible to create a template for pulsating stars that are
 more massive and/or more evolved than the Sun:
-  - beta Cephei    (bCep)  [ToyModel, HeyAerts2024, mocka]
+  - beta Cephei    (bCep)  [ToyModel,               mocka]
   - Slowly puls B  (SPB)   [ToyModel, Pedersen2021, mocka]
   - delta Scuti    (dSct)  [ToyModel, Bowman2018,   mocka]
   - gamma Doradus  (gDor)  [ToyModel, Gang2020,     mocka]
@@ -137,6 +137,7 @@ import os
 import sys
 import glob
 import random
+import pickle
 import argparse
 import datetime
 import warnings
@@ -258,10 +259,7 @@ class VarSim(object):
         self.mocka = args.mocka
         self.mocka_solar = True
         self.pulsators = ['bCep', 'SPB', 'dSct', 'gDor', 'roAp', 'RRLyr', 'Ceph']
-        
-        # Prepare pandas series for parameters
-        self.df = pd.Series()
-        
+                
         # Random number BitGenerator (PCG64)
         if not self.seed:
             self.rng = np.random.default_rng()
@@ -324,9 +322,9 @@ class VarSim(object):
             timeStart = ut.quarter() * (Q[0]-1)
             timeDur   = ut.quarter() * numQuarters
 
-        elif args.time:
+        elif args.tdur:
             timeStart = 0
-            timeDur   = args.time
+            timeDur   = args.tdur
         else:
             timeStart = 0
             timeDur   = ut.quarter()
@@ -824,31 +822,31 @@ class VarSim(object):
         if self.params_star or self.mocka:
             names = ['source', 'spec', 'lum', 'M', 'R', 'Teff', 'logg', 'metal']
             units = [1, 1, 1, u.M_sun, u.R_sun, u.K, 1, 1]
+            
+            # Parsing of MOCKA project (using Gaia IDs)
+            if self.mocka:
+                df = self.df
+                values = [df.gaiaDR3, df.spec, '', df.M, df.R, df.Teff, df.logg, df.Z]
 
             # Parsing of stellar parameters
-            if self.params_star:
-                values = [''*3].append(args.params_star[0])
-
-            # Parsing of MOCKA project (using Gaia IDs)
-            elif self.mocka:
-                df = self.df
-                values = [df.gaiaDR3, df.spec, df.M, df.R, df.Teff, df.logg, df.Z]
+            else:
+                values = ['custom','',''] + self.params_star[0]
                 
             # Secure spectral type exist (assuming main-sequence star):
-            # https://sites.uni.edu/morgans/astro/course/Notes/section2/spectraltemps.html 
-            if df.spec in [None, '', 'CSTAR', 'unknown']:
-                Teff = df.Teff.value
-                if   Teff > 29200                  : df.spec = 'O'
-                elif Teff >  9600 and Teff <= 29200: df.spec = 'B'
-                elif Teff >  7350 and Teff <=  9600: df.spec = 'A'
-                elif Teff >  6050 and Teff <=  7350: df.spec = 'F'
-                elif Teff >  5240 and Teff <=  6050: df.spec = 'G'
-                elif Teff >  3750 and Teff <=  5240: df.spec = 'K'
-                elif                  Teff <=  3750: df.spec = 'M'
+            # https://sites.uni.edu/morgans/astro/course/Notes/section2/spectraltemps.html
+            if values[1] in [None, '', 'CSTAR', 'unknown']:
+                Teff = values[5]
+                if   Teff > 29200                  : values[1] = 'O'
+                elif Teff >  9600 and Teff <= 29200: values[1] = 'B'
+                elif Teff >  7350 and Teff <=  9600: values[1] = 'A'
+                elif Teff >  6050 and Teff <=  7350: values[1] = 'F'
+                elif Teff >  5240 and Teff <=  6050: values[1] = 'G'
+                elif Teff >  3750 and Teff <=  5240: values[1] = 'K'
+                elif                  Teff <=  3750: values[1] = 'M'
 
             # Get parameters 
             params_star = {n: v*x for n,v,x in zip(names, values, units)}
-                
+
         # Parsing of benchmark star
         else:
             # Use Sun by default
@@ -876,7 +874,7 @@ class VarSim(object):
         
         # Print available stellar model parameters
         if self.verbose > 1:
-            print(f"Stellar ID       : {params_star['star']}")
+            print(f"Stellar ID       : {params_star['source']}")
             print(f"Spectral type    : {params_star['spec']}")
             print(f"Luminosity class : {params_star['lum']}")
             print(f"Stellar Teff     : {params_star['Teff']:.0f}")
@@ -1199,8 +1197,6 @@ class VarSim(object):
             params_puls = model.init_oscillations(scaling=args.puls)
             self.params_puls = params_puls[:3]
             self.lc['puls'] = model.eval_oscillations() * self.bol_coeff
-            self.df['numax_muHz']   = self.params_puls[0]
-            self.df['deltanu_muHz'] = self.params_puls[0]
             if self.verbose > 1:
                 print(f'Pulsation   amplitude : {ut.rootMeanSquare(self.lc.puls):.2f} ppm')
                 print(f'Frequency   nu_max    : {params_puls[0]:.2f} microHz')
@@ -1342,15 +1338,15 @@ class VarSim(object):
         time  = self.time.to('d').value
         model = Pulsator(time, power=1.0, scale=self.PD_tess, seed=self.seed)
 
-        if args.puls == 'HeyAerts2024':
-            if self.verbose > 1:
-                print('Selecting a mock object from TESS/Gaia sample (Hey&Aerts2024)')
-            params = model.initFromFile(self.idir, args.puls, starID=self.starID)
-            self.params['star'].update({
-                'A_corr': self.PD_tess,
-                'source': params[0]
-            })
-        elif args.puls == 'mocka':
+        #if args.puls == 'HeyAerts2024':
+            # if self.verbose > 1:
+            #     print('Selecting a mock object from TESS/Gaia sample (Hey&Aerts2024)')
+            # params = model.initFromFile(self.idir, args.puls, starID=self.starID)
+            # self.params['star'].update({
+            #     'A_corr': self.PD_tess,
+            #     'source': params[0]
+            # })
+        if args.puls == 'mocka':
             if self.verbose > 1:
                 print('Generating mock object using TESS/Gaia sample (Hey&Aerts2024)')
             self.dm = model.initMockaHeyAerts2024(self.idir)
@@ -1677,8 +1673,8 @@ class VarSim(object):
         if self.verbose > 1:
             print('Selecting mock object from Kepler sample (IJspeert+2021)')
         params = model.initIJspeert2024(self.idir, starID=None)
-        self.df['starname'] = params[0]
-        self.df['P_day']    = params[1]
+        # self.df['starname'] = params[0]
+        # self.df['P_day']    = params[1]
         if self.verbose > 1 and params[1] is not None:
             print(f'Orbital period : {params[1]:.3f} day')
 
@@ -1736,11 +1732,6 @@ class VarSim(object):
                 args.planet = name_benchmark[dex]
                 Rp_benchmark = [1.0, 3.9, 11.2]
                 Rp = Rp_benchmark[dex] * u.R_earth
-                # Log-normal distribution of planet radii 
-                #Rp = np.random.lognormal(5., 1.) * u.R_earth
-                #if Rp.to('R_jup').value < 0.05: Rp = 0.05 * u.R_jup
-                #if Rp.to('R_jup').value > 8.50: Rp = 1.80 * u.R_jup
-                # Draw mass from M-R forecaster
                 # Paper: Chen, J., & Kipping, D. M. 2018, MNRAS, 473, 2753
                 # Code: https://github.com/chenjj2/forecaster
                 # NOTE forecasting only valid between (0.05 < Rp/R_jup < 8.5) 
@@ -1770,9 +1761,9 @@ class VarSim(object):
                 values = [t0, P, e, i, w, R, M]
                 
             # Make parameter dict
-            names  = ['t0', 'P', 'e', 'i', 'w', 'R', 'M']
-            units  = [u.d, u.d, 1, u.deg, u.deg, u.R_earth, u.M_earth]
-            params = {n: v*x for n,v,x in zip(names, values, units)}
+            names = ['t0', 'P', 'e', 'i', 'w', 'R', 'M']
+            units = [u.d, u.d, 1, u.deg, u.deg, u.R_earth, u.M_earth]
+            params_planet = {n: v*x for n,v,x in zip(names, values, units)}
 
         # Store planet parameters
         self.params.update({'planet': params_planet})
@@ -1792,9 +1783,6 @@ class VarSim(object):
         w  = self.params['planet']['w'].to('rad')
         Rp = self.params['planet']['R'].to('m')
         Mp = self.params['planet']['M'].to('kg')
-        # xi = params['xi']
-        # Tn = params['Tn'].to('K').value
-        # dT = params['dT'].to('K').value
 
         # Handy definitions
         x = np.sqrt(1 - e**2)   # Optimization constant
@@ -1808,8 +1796,8 @@ class VarSim(object):
         b_occ = a*np.cos(i)/Rs * (1 - e**2)/(1 - e*np.sin(w))
 
         # Transit and occultation times: Winn (2014) Eq. 14, 15 & 16
-        ep = x/(1 + e*np.sin(w)) / u.rad
-        em = x/(1 - e*np.sin(w)) / u.rad
+        ep = x / (1 + e*np.sin(w)) / u.rad
+        em = x / (1 - e*np.sin(w)) / u.rad
         Pi = P / np.pi
         t_tra_tot = Pi * np.arcsin(Rs/a * np.sqrt((1 + k)**2 - b_tra**2) / np.sin(i)) * ep
         t_tra_ful = Pi * np.arcsin(Rs/a * np.sqrt((1 - k)**2 - b_tra**2) / np.sin(i)) * ep
@@ -2157,8 +2145,9 @@ class VarSim(object):
     #     # TODO small fix until module is tested again!
     #     self.lc['occu'] = np.ones(len(self.time))
     #     return
-
-        
+    # xi = params['xi']
+    # Tn = params['Tn'].to('K').value
+    # dT = params['dT'].to('K').value
     #     # Initialize model and assign parameters
     #     import spiderman
 
@@ -2327,9 +2316,7 @@ class VarSim(object):
             # Save parameter space
             if self.verbose > 1:
                 print(f'Saving file : {ofile_parameters}')
-            #self.df = self.df.to_frame().T
-            #self.df = self.df.reset_index(drop=True)
-            import pickle
+            
             with open(ofile_parameters, 'wb') as f:
                 pickle.dump(self.params, f)
             #df = pd.DataFrame.from_dict(self.params)
@@ -2370,8 +2357,11 @@ class VarSim(object):
         # Bolometric correction
         self.stellar_spectrum()
 
-        # Include stellar variability        
-        if args.star == 'bCep':
+        # Constant star
+        if args.star == 'constant':
+            pass
+        # Include stellar variability
+        elif args.star == 'bCep':
             v.star_bcep()
         elif args.star == 'SPB':
             v.star_spb()
@@ -2391,18 +2381,14 @@ class VarSim(object):
             v.star_v361hya()            
         elif args.star == 'ZZCeti':
             v.star_zzceti()
-        else:
-            # Constant star
-            if args.star == 'constant':
-                pass
-            # Solar-like stars
-            elif args.star or args.params_star:
-                if args.gran and args.puls:
-                    v.solar_granosc()
-                if args.spot:
-                    v.solar_spots()
-                if args.flare is not False:
-                    v.solar_flares()
+        # Solar-like stars
+        elif args.star or args.star_params:
+            if args.gran and args.puls:
+                v.solar_granosc()
+            if args.spot:
+                v.solar_spots()
+            if args.flare is not False:
+                v.solar_flares()
                     
         # Include planetary system
         if args.planet or args.planet_params:
@@ -2804,7 +2790,7 @@ parser.add_argument('-o', '--ofile',   metavar='STR', type=str, help='Output fil
 parser.add_argument('-v', '--verbose', metavar='INT', type=int, help='Verbosity level [0, 1, 3] (Default: 1)')
 
 obs_group = parser.add_argument_group('OBS PARAMETERS')
-obs_group.add_argument('--time',    metavar='DAY',  type=int, help='Duration of simulation (Default: 90 days)')
+obs_group.add_argument('--tdur',    metavar='DAY',  type=int, help='Duration of simulation (Default: 90 days)')
 obs_group.add_argument('--quarter', metavar='NUM',  type=str, help='Quarter number or range of quaters to simulate (Default: 1)')
 obs_group.add_argument('--cadence', metavar='SEC',  type=int, help='Cadence of observation (Default: 25 seconds)')
 obs_group.add_argument('--inst',    metavar='NAME', type=str, help='Photometric instrument (Default: plato)')
