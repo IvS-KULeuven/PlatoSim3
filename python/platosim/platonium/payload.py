@@ -229,13 +229,12 @@ class Payload(object):
         """Function to create a job script to be used on the VSC.
         """
         if self.odir:
-            errorcode('module', f'\nJob script for parallisation\n')
             filename = f"{self.odir}/{self.prefix}.slurm"
             if self.verbose > 1:
+                errorcode('module', f'\nJob script for parallisation\n')
                 print(f"Creating parameterization job-script: {filename}")
             sm.getJobScript(self.N, self.G, self.C, self.Q,
-                            ofile=filename)
-
+                            ofile=filename, verbose=self.verbose)
 
                             
     def createPRE(self):

@@ -138,15 +138,18 @@ class LightCurve(object):
                 else:
                     # Load HDF5 file
                     simfile = SimFile(filename)
+                    # Fetch star catalogue
+                    self.ds = simfile.getStarCatalog(df=True)
+                    ID = self.ds['ID'].iloc[0]
                     # Fetch light curve
-                    self.df = simfile.getLightCurve(1, df=True)
+                    self.df = simfile.getLightCurve(starID=ID, df=True)
                     # Add time column if not found
                     if not 'time' in self.df:
                         exptime  = simfile.getExposureTime()
                         readtime = simfile.getReadoutTime()
                     # Mask and updates 
                     self.mask_updates  = simfile.getMaskUpdateEvents()
-                    self.mask_aperture = simfile.getApertureMask(starID=1)
+                    self.mask_aperture = simfile.getApertureMask(starID=ID)
 
             # Option to load CSV file
                 

@@ -1801,7 +1801,7 @@ class SimFile (object):
 
         starIDgroupName = f"starID{starID}"
         if starIDgroupName not in self.hdf5file["Photometry"]["Masks"].keys():
-            print(f"Error: getPhotometricMask(): {starIDgroupName}" +
+            print(f"Error: getApertureMask(): {starIDgroupName}" +
                   " not present in Photometry/Masks/ in the HDF5 file")
             return None, None, None, None, None, None
 
@@ -1817,7 +1817,7 @@ class SimFile (object):
         if isinstance(imageNr, int):                                # imageNr is not None
             idx = np.searchsorted(exposureNrOfMaskUpdate, imageNr, side='right') - 1
             if idx < 0:
-                print("Error: getPhotometricMask(): requesting an imageNr that is too early for this HDF5 file")
+                print("Error: getApertureMask(): requesting an imageNr that is too early for this HDF5 file")
                 return None, None, None, None, None, None
 
             exposureNrOfMaskUpdate = exposureNrOfMaskUpdate[idx]

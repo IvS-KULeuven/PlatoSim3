@@ -58,7 +58,6 @@ from prettytable import PrettyTable
 # PlatoSim functions
 import platosim.plot      as pt
 import platosim.utilities as ut
-import platosim.starquery as sq
 import platosim.referenceFrames as rf
 from platosim.utilities  import errorcode
 from platosim.simulation import Simulation
@@ -364,7 +363,8 @@ General notes:
 
         # Fetch PIC catalogue from FTP server
         if not inputFileTar.is_file() or not inputFileCon.is_file():
-            print(f'Downloading {self.pic} catalogue..')
+            if self.verbose > 1:
+                print(f'Downloading {self.pic} catalogue..')
             ut.downloadFromFTP(inputFileTar.name, self.inputDir, 'plato')
             ut.downloadFromFTP(inputFileCon.name, self.inputDir, 'plato')
 
@@ -648,8 +648,13 @@ General notes:
         dc1 = pd.DataFrame()
         numConPerTar = np.zeros(self.numTargets)
 
-        for starNo in tqdm(range(self.numTargets), bar_format=ut.tqdmBar()):
-
+        # Loop over each target star
+        if self.verbose == 0:
+            argument = range(self.numTargets)
+        else:
+            argument = tqdm(range(self.numTargets), bar_format=ut.tqdmBar())
+            
+        for starNo in argument:
             # Find corresponding contaminants to our target
             dcc = dc[dc['PIC'] == df['PIC'].iloc[starNo]]
 
@@ -840,6 +845,8 @@ General notes:
     def querySimbad(self):
         """Function to query a Gaia DR3 star and its contaminants.
         """
+        # Load module here to allow offline usage of --pic
+        import platosim.starquery as sq
         # Query Gaia DR3 star
         self.df_all = sq.simbadQuery(self.simbad, radius=self.disConLimit)
         if self.verbose > 1:
@@ -1083,6 +1090,8 @@ General notes:
         https://www.cosmos.esa.int/web/gaia-users/archive/programmatic-access
         """
         self.flag_combine = True
+        # Load module here to allow offline usage of --pic
+        import platosim.starquery as sq
 
         # QUERY CATALOGUE
         

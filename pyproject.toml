@@ -51,6 +51,7 @@ platonium = [
     "joblib>=1.6.0,<2.0.0",
     "wotan>=1.10,<2.0.0",
     "dictdiffer>=0.10.0",
+    "statsmodels>=0.15.0",    
 ]
 pipeline = [
     "cython>=3.3.0,<4.0.0",

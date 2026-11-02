@@ -42,19 +42,6 @@ from platosim.simfile      import SimFile
 from platosim.utilities    import errorcode
 from platosim.matplotlibrc import setup; setup()
 
-# pylint: disable=line-too-long
-# pylint: disable=invalid-name
-# pylint: disable=trailing-whitespace
-# pylint: disable=multiple-statements
-# pylint: disable=no-member
-# pylint: disable=bare-except
-# pylint: disable=redefined-outer-name
-# pylint: disable=no-name-in-module
-# pylint: disable=too-many-statements
-# pylint: disable=too-many-branches
-# pylint: disable=consider-using-enumerate
-# pylint: disable=attribute-defined-outside-init
-
 #==============================================================#
 #                        PLATOnium CLASS                       #
 #==============================================================#
@@ -495,7 +482,7 @@ class PLATOnium(object):
                 self.targetDex = 0
                 self.df = df.loc[self.targetDex]
                 self.dc = df.iloc[1:]
-                print(self.df); exit()
+
             # Fetch stars from PIC and Gaia DR3 catalogues
             else:
                 
@@ -516,7 +503,6 @@ class PLATOnium(object):
                 except IndexError:
                     errorcode('error', f'Stellar catalogue "{self.sample}" does not exist!')
                 else:
-                    print(catTarName)
                     try:
                         self.catTarFile = glob.glob(catTarName)[0]
                     except IndexError:
@@ -1716,7 +1702,7 @@ class PLATOnium(object):
 
         if self.verbose > 1:
             errorcode('message', '\n[psim2datastruc]: Pre-processing imagettes')
-        mag_err = 2.5*(self.pipeFluxError/100.)/np.log(10.)
+        mag_err = 2.5 * (self.pipeFluxError/100.) / np.log(10.)
         comm = f'psim2datastruc --cam-id {self.cameraID:02d} --prnu_err {self.pipePrnuError} --seed {self.seedTarget} --mag-error {mag_err} --centroid-err {self.pipeAbsCenError}'
         if self.pipeZarrOutput:
             comm += " --optimised_file_format"
@@ -1769,13 +1755,15 @@ class PLATOnium(object):
         # PRE-PROCESSING
         if self.verbose > 1:
             errorcode('message', '\n[psim2datastruc]: Pre-processing imagettes')
-        mag_err = 2.5*(self.pipeFluxError/100.)/np.log(10.)
+        mag_err = 2.5 * (self.pipeFluxError/100.) / np.log(10.)
         comm = f'psim2datastruc --cam-id {self.cameraID:02d} --prnu_err {self.pipePrnuError} --seed {self.seedTarget} --mag-error {mag_err} --centroid-err {self.pipeAbsCenError}'
         if self.pipeZarrOutput:
             comm += " --optimised_file_format"
         comm += f' --target_id {int(self.starID)} . {self.starID} {self.starID} 6'
-        print(os.getcwd())
-        print(comm)
+        # Debugging
+        if self.verbose > 2:
+            print(os.getcwd())
+            print(comm)
         cmd = os.system(comm)
         if cmd != 0:
             self.failed('psim2datastruc failed due to the above error!')
@@ -1837,8 +1825,10 @@ class PLATOnium(object):
         if self.pipeZarrOutput:
             comm += " --optimised_file_format"
         comm += f' --target_id {int(self.starID)} . {self.starID} {self.starID} 6'
-        print(os.getcwd())
-        print(comm)
+        # Debugging
+        if self.verbose > 2:
+            print(os.getcwd())
+            print(comm)
         cmd = os.system(comm)
         if cmd != 0:
             self.failed('psim2datastruc failed due to the above error!')
