@@ -380,7 +380,22 @@ void DetectorWithAnalyticNonGaussianPSF::readInFlatfieldMap()
 
     // Select the correct subregion from our prnuFile
     arma::Mat<float> prnuMap;
-    prnuFile.readArray("/", "PRNU", prnuMap);
+    // The PRNU dataset can be named either "PRNU" or "PRNUmap"
+    string prnuDatasetName;
+    if (prnuFile.hasDataset("/", "PRNU"))
+    {
+        prnuDatasetName = "PRNU";
+    }
+    else if (prnuFile.hasDataset("/", "PRNUmap"))
+    {
+        prnuDatasetName = "PRNUmap";
+    }
+    else
+    {
+        prnuFile.close();
+        throw H5DatasetException("Detector: flatfield HDF5 file " + flatfieldFilePath + " contains neither a 'PRNU' nor a 'PRNUmap' dataset.");
+    }
+    prnuFile.readArray("/", prnuDatasetName, prnuMap);
 
     flatfieldMap = prnuMap.submat(subFieldZeroPointRow, subFieldZeroPointColumn,
                                    subFieldZeroPointRow+numRowsPixelMap-1,
