@@ -235,7 +235,6 @@ class Detector: public HDF5Writer
         bool includeBadPixelMap; 
         bool includeCosmicsInSmearingMap;        // Whether or not to include cosmic hits in the (physical) overscan region
         bool includeCosmicsInBiasMap;            // Whether or not to include cosmic hits in the (virtual) prescan region
-        bool groupByExposure;                    
         double cosmicHitRate;				     // Cosmic hit rate [events / cm^2 / s]
         vector<double> cosmicTrailLengthParams;  // Distribution parameters of the length of the cosmic trails          [pixels]
         vector<double> cosmicIntensityParams;    // Skew-Normal distribution parameters fo the intensity of the intensities of the cosmics

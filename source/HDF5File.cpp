@@ -2607,7 +2607,7 @@ void HDF5File::writePointlikeGhostByStarID(map<double, map<unsigned int, array<d
       {
           // Make the subgroup
           stringstream myStream;
-          myStream << "StarID" << setfill('0') << setw(7) << 0 + starIDs[n];
+          myStream << "starID" << setfill('0') << setw(7) << 0 + starIDs[n];
           const string pointLikeGhostGroupName = "/PointLikeGhostPositions/" + myStream.str();
           createGroup(pointLikeGhostGroupName);
           //writeArray(pointLikeGhostGroupName, "time",   times.data(),   times.size());
@@ -2808,7 +2808,7 @@ void HDF5File::writeExtendedGhostByStarID(map<double, map<unsigned int, array<do
     {
       // Make the subgroup
       stringstream myStream;
-      myStream << "Exposure" << setfill('0') << setw(7) << 0 + starIDs[n];
+      myStream << "starID" << setfill('0') << setw(7) << 0 + starIDs[n];
       const string extendedGhostGroupName = "/ExtendedGhostPositions/" + myStream.str();
       createGroup(extendedGhostGroupName);
       //writeArray(extendedGhostGroupName, "times",  times.data(),       times.size());
