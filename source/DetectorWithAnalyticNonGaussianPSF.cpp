@@ -1027,7 +1027,9 @@ void DetectorWithAnalyticNonGaussianPSF::flushOutput()
 
         for (auto starID : photStarIDs)
         {
-            string starName = to_string(starID);
+            stringstream starStream;
+            starStream << setfill('0') << setw(7) << starID;
+            string starName = starStream.str();
             groupName = "/Photometry/Lightcurves/starID" + starName;
             hdf5File.createGroup(groupName);
 

@@ -397,7 +397,6 @@ void Detector::updateParameters(double time)
 
     isFastCamera          = configParam.getString("Telescope/GroupID") == "Fast";
     includeShield         = configParam.getBoolean("CCDPositions/MetallicShield/IncludeMetallicShield");
-    groupByExposure       = configParam.getBoolean("ControlHDF5Content/GroupByExposure");
 
     if (ccdPosition == "Custom")
     {
@@ -3793,11 +3792,9 @@ void Detector::makeSubGroupForCosmics(string field, int exposureNr)
 
 /**
  * Writes the colum, row and flux values of cosmics to the HDF5 file. This function
- * calls HDF5File::writeCosmicsWhithoutGroupByExposure, if cosmics is included
- * in the repective Field.
+ * calls HDF5File::writeCosmics, if cosmics is included in the respective Field.
  *
  * /params exposureNr:   Sequential number of the exposure
- * /note: This function gets called when groupByExposure is true.
  */
 void Detector::writeCosmicHitsToHDF5(int exposureNr)
 {

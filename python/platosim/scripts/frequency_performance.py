@@ -120,7 +120,9 @@ def read_data_from_file(filename, exptime=21):
         else:
             print('star ids: %s' % list(f['Photometry']['Lightcurves']))
             # make e-/exposure, scale by exptime
-            lc = f['Photometry']['Lightcurves']['starID1']['estimatedFlux'][()]*exptime
+            lightcurves = f['Photometry']['Lightcurves']
+            starName = 'starID1' if 'starID1' in lightcurves else 'starID0000001'
+            lc = lightcurves[starName]['estimatedFlux'][()]*exptime
             status = np.array([0]*len(lc))
     return lc, status
 

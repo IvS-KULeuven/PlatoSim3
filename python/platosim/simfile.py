@@ -1555,6 +1555,22 @@ class SimFile (object):
 
 
 
+    def _photometryStarGroupName(self, starID, subgroup="Lightcurves"):
+
+        """
+        Name of the star's group in Photometry/<subgroup>: "starID0000001",
+        or the older unpadded "starID1" if that is what the file contains.
+        """
+
+        legacyName = f"starID{starID}"
+        if legacyName in self.hdf5file["Photometry"][subgroup].keys():
+            return legacyName
+        return f"starID{int(starID):07d}"
+
+
+
+
+
     def getCosmicsWithinApertureMask(self, starID):
 
         """
@@ -1574,7 +1590,7 @@ class SimFile (object):
             to index the light curve, e.g. df.iloc[indices]. None on error.
         """
 
-        starIDgroupName = f"starID{starID}"
+        starIDgroupName = self._photometryStarGroupName(starID, "Lightcurves")
         if starIDgroupName not in self.hdf5file["Photometry"]["Lightcurves"].keys():
             print(f"ERROR: simfile.getCosmicsWithinApertureMask(): {starIDgroupName} " +
                   "not present in HDF5 group: Photometry/Lightcurves")
@@ -1642,7 +1658,7 @@ class SimFile (object):
 
             # Check photometry is present for each star
 
-            starIDgroupName = f"starID{ID}"
+            starIDgroupName = self._photometryStarGroupName(ID, "Lightcurves")
             if starIDgroupName not in self.hdf5file["Photometry"]["Lightcurves"].keys():
                 print(f"ERROR: SimFile.getFlux(): {starIDgroupName} not present in " +
                       "Photometry/Lightcurves/ in the HDF5 file")
@@ -1656,7 +1672,7 @@ class SimFile (object):
 
             # Fetch flux column
 
-            flux = np.array(self.hdf5file[f"Photometry/Lightcurves/starID{ID}/{lctype}"])
+            flux = np.array(self.hdf5file[f"Photometry/Lightcurves/{starIDgroupName}/{lctype}"])
 
             # Create data frame and append to it
 
@@ -1799,7 +1815,7 @@ class SimFile (object):
 
         # Check if photometric data exists
 
-        starIDgroupName = f"starID{starID}"
+        starIDgroupName = self._photometryStarGroupName(starID, "Masks")
         if starIDgroupName not in self.hdf5file["Photometry"]["Masks"].keys():
             print(f"Error: getApertureMask(): {starIDgroupName}" +
                   " not present in Photometry/Masks/ in the HDF5 file")
