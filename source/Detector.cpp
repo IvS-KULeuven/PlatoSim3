@@ -377,6 +377,9 @@ void Detector::updateParameters(double time)
     numColumnsBiasMap       = configParam.getInteger("SubField/NumBiasPrescanColumns");
     numRowsSmearingMap      = configParam.getInteger("SubField/NumSmearingOverscanRows");
 
+    openShutterSmearingPerColumn.zeros(numColumnsPixelMap);
+    meanDarkSignalPixelMap = 0.0;
+
     Log.debug("Detector: Subfield zero point (row, col) = (" + to_string(subFieldZeroPointRow) + ", " + to_string(subFieldZeroPointColumn) + ")");
     Log.debug("Detector: Subfield center point (row, col) = (" + to_string(subFieldZeroPointRow + numRowsPixelMap/2)
                                                                + ", " + to_string(subFieldZeroPointColumn + numColumnsPixelMap/2) + ")");
@@ -905,20 +908,6 @@ double Detector::takeExposure(int exposureNr, double startTime, double exposureT
     integrateLight(exposureNr, startTime, exposureTime);
 
 
-    // If this is the first exposure, we should initialize the number of occupied traps.
-    // This can only be done after the detector has been exposed to the skybackground.
-    // => Check if CTI is included && We use the Short2013 model
-    //
-    // JDR[08-01-2026]: I commented out the following if-statement because it causes the first exposure to show a different CTI trail 
-    //                  compared to the other exposures. Cf Issue #989. Inside the applyShort2013CTI() function, I implemented the traps
-    //                  to be all occupied at the beginning of the readout.
-
-    // if (exposureNr == beginExposureNr) {
-    //     if (includeCTIeffects && (CTImodel == "Short2013" || CTImodel == "Short2013FromFile")) {
-    //         setInitialNumberOfOccupiedTraps(numberOfOccupiedTrapsPixelMap);
-    //     }
-    // }
-
     // Include noise effects like readout noise, photon noise, full well saturation, etc.
     // Note: readOut() needs the exposure time to compute the open shutter smearing.
 
@@ -1323,6 +1312,7 @@ void Detector::addDarkSignal(float exposureTime)
     const double darkCurrentOverDeltaTemp = darkCurrentStability * (getTemperature() - nominalOperatingTemperature);
     double darkSignalRef = (darkCurrent + darkCurrentOverDeltaTemp) * (exposureTime + readoutTimeBeforeNextExposure + readoutTimeDuringNextExposure);
     darkSignalDistribution = normal_distribution<double>(darkSignalRef, darkSignalRef * dsnu / 100.0);
+    meanDarkSignalPixelMap = darkSignalRef;
 
 
     for(unsigned int row = 0; row < numRowsPixelMap; row++)
@@ -2187,50 +2177,6 @@ void Detector::applyCTI()
 
 
 
-void Detector::setInitialNumberOfOccupiedTraps(arma::Mat<float> &numberOfOccupiedTraps)
-{
-    // Set general parameters
-
-    const double maxVolumePerPixel = pixelSize * pixelSize * 1.e-18  / 2.0;                                  // Vg [m^3]
-    const double effectiveElectronMass = 0.5 * Constants::FREEELECTRONMASS;                                  // me [kg]
-    const double thermalVelocity = sqrt(3.0 * Constants::KBOLTZMANN * temperature / effectiveElectronMass);  // vt [m/s]
-    const double dwellTime = ((numColumns / 2) + numColumnsBiasMap) * serialTransferTime;                    // t  [s]
-
-    // Initialise the trapspecies
-
-    arma::Row<float> alpha(numTrapSpecies, arma::fill::zeros);
-    for (int k = 0; k < numTrapSpecies; k++)
-    {
-        alpha(k) = dwellTime * trapCaptureCrossSection[k] * thermalVelocity * pow(fullWellSaturationLimit, beta) / (2.0 * maxVolumePerPixel);
-    }
-
-    arma::Row<float> skyBackground;
-    skyBackground = pixelMap.row(0);
-
-    // Set initial number of occupied traps for pixelMap
-
-    for (int k = 0; k < numTrapSpecies; k++)
-    {
-        arma::Mat<float> currentTrapDensityMap =
-	    (meanTrapDensityBOL[k] + (meanTrapDensityEOL[k] - meanTrapDensityBOL[k]) * beginExposureNr / finalExposureNr) * radiationMap;
-
-        arma::Row<float> gamma(numColumnsPixelMap, arma::fill::zeros);
-        gamma = 2 * currentTrapDensityMap.row(0) *
-               (subFieldZeroPointRow + 1) / pow(fullWellSaturationLimit, beta) / (1 + beta); // +1 as row=0 also has to be transferred once
-        arma::Row<float> A = (1 - arma::exp(-alpha(k) * arma::pow(skyBackground / 2, 1 - beta))) /
-                             (gamma % arma::pow(skyBackground, beta - 1) + 1);
-        arma::Row<float> B = gamma % arma::pow(skyBackground, beta);
-        double C = (1 - exp(-dwellTime / releaseTime[k]));
-        numberOfOccupiedTraps.row(k) = (A % B) / (A + C);
-    }
-}
-
-
-
-
-
-
-
 /**
  * \brief Apply charge injection to mitigate the CTI effect. Only the PixelMap is affected.
  *
@@ -2351,6 +2297,107 @@ void Detector::applySimpleCTImodel()
 
 
 /**
+ * \brief: Estimate the charge in a CCD pixel without any source, for the current exposure.
+ *         The rows outside the subfield are not simulated, but this charge is needed
+ *         to know how they fill the traps during the readout.
+ *
+ * \return Background for each column of the subfield: sky, straylight, dark signal and
+ *         open-shutter smearing [e-].
+ */
+
+arma::Row<float> Detector::estimateBackgroundPerColumn()
+{
+    double skyBackground = camera.getTotalSkyBackground();                                 // [photons]
+
+    if (includeRelativeTransmissivity)
+        skyBackground *= expectedValueRelativeTransmissivity;
+
+    if (includePolarization)
+        skyBackground *= expectedValuePolarization;
+
+    if (includeParticulateContamination)
+        skyBackground *= particulateContaminationEfficiency;
+
+    if (includeMolecularContamination)
+        skyBackground *= molecularContaminationEfficiency;
+
+    if (includeQuantumEfficiency)
+        skyBackground *= meanQE;                                                           // [e-]
+
+    if (includeStraylight && !straylightValues.empty())
+        skyBackground += straylightValues.back();
+
+    arma::Row<float> background = openShutterSmearingPerColumn;
+    background.elem(arma::find_nonfinite(background)).zeros();
+    background += static_cast<float>(skyBackground + meanDarkSignalPixelMap);
+
+    return background;
+}
+
+
+
+
+
+
+
+/**
+ * \brief: Transfer one row of charge packets along its columns to the readout register,
+ *         using Eqs. (22)-(25) of Short et al. (2013).
+ *
+ * \note Capture and release follow the order of the CDM03 code: the captured electrons are first
+ *       added to the occupied traps, and the release is computed from the updated number. The
+ *       trap species are treated one after the other. The trap parameters of Prod'homme et al. (2016)
+ *       were fitted with this model and are only valid for it.
+ *
+ * \param charge:           Charge packets of the row, updated by this function [e-]
+ * \param crossedRadiation: Summed normalized radiation level of all pixels crossed by the row
+ * \param trapDensity:      Mean trap density for each species [traps/pixel]
+ * \param alpha:            Capture parameter of Eq. (23) for each species
+ * \param releaseFraction:  Fraction of the occupied traps that release during one line, for each species
+ * \param occupiedTraps:    Occupied traps per species (rows) and column (columns), updated by this function
+ */
+
+void Detector::transferRowShort2013(arma::Row<float> &charge, const arma::Row<double> &crossedRadiation,
+                                    const vector<double> &trapDensity, const vector<double> &alpha,
+                                    const vector<double> &releaseFraction, arma::Mat<float> &occupiedTraps)
+{
+    const double fullWellToBeta = pow(fullWellSaturationLimit, beta);
+
+    for (unsigned int species = 0; species < numTrapSpecies; species++)
+    {
+        // Eq. (23) of Short et al. (2013)
+
+        const arma::Row<double> gammaAsDouble = 2.0 * trapDensity[species] * crossedRadiation / fullWellToBeta / (1.0 + beta);
+        const arma::Row<float> gamma = arma::conv_to<arma::Row<float>>::from(gammaAsDouble);
+
+        // Eq. (22) of Short et al. (2013). Note that Armadillo uses % for elementwise multiplication.
+
+        arma::Row<float> capturedElectrons =
+            (gamma % arma::pow(charge, beta) - occupiedTraps.row(species))
+            / (gamma % arma::pow(charge, beta - 1) + 1)
+            % (1 - arma::exp(static_cast<float>(-alpha[species]) * arma::pow(charge, 1 - beta)));
+
+        // Captured electron numbers can't be negative, and empty pixels don't lose charge.
+
+        capturedElectrons.elem(arma::find(capturedElectrons < 0.0f)).zeros();
+        capturedElectrons.elem(arma::find_nonfinite(capturedElectrons)).zeros();
+
+        occupiedTraps.row(species) += capturedElectrons;
+
+        const arma::Row<float> releasedElectrons = occupiedTraps.row(species) * static_cast<float>(releaseFraction[species]);
+        occupiedTraps.row(species) -= releasedElectrons;
+
+        charge += releasedElectrons - capturedElectrons;
+    }
+}
+
+
+
+
+
+
+
+/**
  * \brief: Apply the effect of the charge-transfer inefficiency to the map,
  *         using the model described in Short et al., MNRAS 430, 3078-3085 (2013).
  *         Only parallel readout is taken into account here.
@@ -2440,6 +2487,39 @@ void Detector::applyShort2013CTImodel(string map)
                             / (2.0 * maxVolumePerPixel);
     }
 
+    // The traps at the start of the pixel map are in the state left by the rows below the subfield.
+    // Simulate the last of those rows, assuming that they only contain the background. Rows that
+    // are not exposed only have dark signal.
+
+    if (map == "pixelMap")
+    {
+        vector<double> bufferTrapDensity(numTrapSpecies);
+        vector<double> bufferAlpha(numTrapSpecies);
+        vector<double> bufferReleaseFraction(numTrapSpecies);
+
+        for (int ispecies = 0; ispecies < numTrapSpecies; ispecies++)
+        {
+            bufferTrapDensity[ispecies] = meanTrapDensityBOL[ispecies]
+                                          + (meanTrapDensityEOL[ispecies] - meanTrapDensityBOL[ispecies]) * internalTime / missionDuration;
+            bufferAlpha[ispecies] = dwellTime * trapCaptureCrossSection[ispecies] * thermalVelocity * pow(fullWellSaturationLimit, beta)
+                                    / (2.0 * maxVolumePerPixel);
+            bufferReleaseFraction[ispecies] = 1.0 - exp(-dwellTime / releaseTime[ispecies]);
+        }
+
+        const arma::Row<float> background = estimateBackgroundPerColumn();
+        const arma::Row<float> darkSignal(numColumnsPixelMap, arma::fill::value(static_cast<float>(meanDarkSignalPixelMap)));
+        const unsigned int firstBufferRow = (subFieldZeroPointRow > numCTIBufferRows) ? subFieldZeroPointRow - numCTIBufferRows : 0;
+
+        numberOfOccupiedTraps->zeros();
+
+        for (unsigned int ccdRow = firstBufferRow; ccdRow < subFieldZeroPointRow; ccdRow++)
+        {
+            const arma::Row<double> crossedRows(numColumnsPixelMap, arma::fill::value(static_cast<double>(ccdRow + 1)));
+            arma::Row<float> charge = (ccdRow < firstRowExposed) ? darkSignal : background;
+            transferRowShort2013(charge, crossedRows, bufferTrapDensity, bufferAlpha, bufferReleaseFraction, *numberOfOccupiedTraps);
+        }
+    }
+
     // Loop over all rows of the pixel/smearing Map.
     // For each row, the computations are done for all columns simultaneously.
 
@@ -2454,10 +2534,10 @@ void Detector::applyShort2013CTImodel(string map)
                                                        + (meanTrapDensityEOL[ispecies] - meanTrapDensityBOL[ispecies]) * internalTime / missionDuration) 
                                                      * (*radiation);
 
-            // At the end of every exposure, right before the readout, assume that all traps of every species are occupied. 
-            // Given the fast capture times, this seems a reasonable assumption.
+            // At the first over-scan row, every column starts with a number of occupied traps equal to
+            // the mean trap density, regardless of the trap state left by the image rows.
 
-            if (irow == 0) {
+            if ((irow == 0) && (map == "smearingMap")) {
                 (*numberOfOccupiedTraps).row(ispecies) = currentTrapDensityMap.row(irow);
             }
             
@@ -2656,6 +2736,7 @@ void Detector::applyOpenShutterSmearing(float exposureTime)
     arma::Row<float> factor = openShutterSmearingTime % arma::pow(arma::conv_to<arma::Row<float>>::from(numExposedRowsInFOV), -1) / exposureTime;
 
     openShutterSmearing %= factor;
+    openShutterSmearingPerColumn = openShutterSmearing;
 
     // Add the effect of the open-shutter smearing to the pixel map
 

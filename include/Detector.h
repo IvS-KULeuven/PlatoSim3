@@ -122,7 +122,6 @@ class Detector: public HDF5Writer
         virtual void applyFullWellSaturation();
         virtual void applyCTI();
         virtual void applyChargeInjection();
-        virtual void setInitialNumberOfOccupiedTraps(arma::Mat<float> &numberOfOccupiedTraps);
         virtual void applyOpenShutterSmearing(float exposureTime);
         virtual void addReadoutNoise();
         virtual void applyQuantisation();
@@ -142,6 +141,10 @@ class Detector: public HDF5Writer
         StrayLight *straylight;
         void applySimpleCTImodel();
         void applyShort2013CTImodel(string map);
+        void transferRowShort2013(arma::Row<float> &charge, const arma::Row<double> &crossedRadiation,
+                                  const vector<double> &trapDensity, const vector<double> &alpha,
+                                  const vector<double> &releaseFraction, arma::Mat<float> &occupiedTraps);
+        arma::Row<float> estimateBackgroundPerColumn();
         void makeSubGroupForCosmics(string field, int exposureNr);
 
         void applyParticulateContamination();
@@ -319,6 +322,9 @@ class Detector: public HDF5Writer
         arma::Mat<float> radiationSmearingMap;   // Normalized radiation map for the smearing map under consideration [p+ / s]
         arma::Mat<float> numberOfOccupiedTrapsPixelMap;      // Number of occupied traps in the Short2013 CTI model, when specified in ...
         arma::Mat<float> numberOfOccupiedTrapsSmearingMap;   // ... a file, to allow a for spatially varying trap density.
+        static const unsigned int numCTIBufferRows = 500;  // Nr of CCD rows below the subfield that are simulated to set the trap occupancy
+        arma::Row<float> openShutterSmearingPerColumn;     // Open-shutter smearing of the current exposure, for each column [e-]
+        double meanDarkSignalPixelMap;           // Mean dark signal in the pixel map for the current exposure [e-]
 
         double chargeInjectionLevel;             // Percentage of the full well to be filled by charge injection [0-100]
         int injectionRowInterval;                // Charge will be injected every XX CCD row [integer: in 1 - numrows] starting from firstInjectedRow.

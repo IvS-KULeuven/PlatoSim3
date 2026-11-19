@@ -497,19 +497,6 @@ double DetectorWithMappedPSF::takeExposure(int exposureNr, double startTime, dou
 
     integrateLight(exposureNr, startTime, exposureTime);
 
-    // If this is the first exposure, we should initialize the number of occupied traps.
-    // This can only be done after the detector
-    // has been exposed to the skybackground.
-    // => Check if CTI is included && We use the Short2013 model
-
-    if (exposureNr == beginExposureNr) {
-      if (includeCTIeffects &&
-          (CTImodel == "Short2013" || CTImodel == "Short2013FromFile"))
-      {
-          setInitialNumberOfOccupiedTraps(numberOfOccupiedTrapsPixelMap);
-      }
-    }
-
     // Include noise effects like readout noise, photon noise, full well saturation, etc.
     // Note: readOut() needs the exposure time to compute the open shutter smearing.
 
