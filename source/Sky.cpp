@@ -249,6 +249,20 @@ void Sky::updateParameters(double time)
         const double Vmag0 = get<2>(starDB[starID]);  // Tuple elements [0], [1], [2] contain RA, dec, Vmag
         selectedVmag[index] = Vmag0 + (*deltaMag)();
     }
+
+    // Idem for the stars selected along the columns of the subfield
+
+    for (unsigned int n = 0; n < selectedVariableColumnStars.size(); n++)
+    {
+        const unsigned int index = selectedVariableColumnStars[n];
+        const unsigned int starID = selectedColumnStarID[index];
+
+        auto& deltaMag = deltaMagnitude[starID];
+        deltaMag->updateValue(time);
+
+        const double Vmag0 = get<2>(starDB[starID]);
+        selectedColumnStarVmag[index] = Vmag0 + (*deltaMag)();
+    }
 }
 
 
@@ -434,6 +448,113 @@ unsigned long Sky::selectGhostOrigsWithinRadiusFrom(double RA0, double dec0, dou
     }
 
     return selectedGhostOrigID.size();
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+/**
+ * \brief Given a set of circles on the sky, select all stars from the database within at least one of
+ *        these circles that are brighter than a given magnitude. This selection is kept apart from the
+ *        selection of selectStarsWithinRadiusFrom(), and is used for the stars along the columns of the
+ *        subfield, where the circles cover consecutive segments of the strip with these columns.
+ *
+ * \param RA0             Right ascension of the centre point of each circle on the sky [degrees or radians (see further)].
+ * \param dec0            Declination of the centre point of each circle on the sky [degrees or radians (see further)].
+ * \param radius          Radius of each circle on the sky [degrees or radians (see further)].
+ * \param magnitudeLimit  Only stars with a catalogue magnitude Vmag <= magnitudeLimit are selected.
+ * \param angleUnit       If the input angles are in degrees: Angle:degrees, if in radians: Angle::radians.
+ *
+ * \return Total number of selected stars.
+ */
+
+unsigned long Sky::selectColumnStarsWithinCircles(const vector<double> &RA0, const vector<double> &dec0, const vector<double> &radius,
+                                                  double magnitudeLimit, Unit angleUnit)
+{
+    if (RA0.empty() || (dec0.size() != RA0.size()) || (radius.size() != RA0.size()))
+    {
+        throw IllegalArgumentException("Sky::selectColumnStarsWithinCircles(): RA0, dec0, and radius must be non-empty and have the same size");
+    }
+
+    // All computations are done in radians
+
+    const size_t numCircles = RA0.size();
+    vector<double> RACircleCenter(numCircles), decCircleCenter(numCircles), radiusCircle(numCircles);
+
+    for (size_t n = 0; n < numCircles; n++)
+    {
+        RACircleCenter[n]  = RA0[n]    / angleUnit;      // [radians]
+        decCircleCenter[n] = dec0[n]   / angleUnit;      // [radians]
+        radiusCircle[n]    = radius[n] / angleUnit;      // [radians]
+    }
+
+    // A large circle around the middle circle that contains all the circles. Stars outside of it can't be
+    // in any of the circles, so for most stars of the database one test is enough to reject them.
+
+    const size_t middle = numCircles / 2;
+    double radiusEnclosingCircle = 0.0;                  // [radians]
+
+    for (size_t n = 0; n < numCircles; n++)
+    {
+        const double distance = angularDistanceBetween(RACircleCenter[middle], decCircleCenter[middle],
+                                                       RACircleCenter[n], decCircleCenter[n], Angle::radians);
+        radiusEnclosingCircle = max(radiusEnclosingCircle, distance + radiusCircle[n]);
+    }
+
+    auto isInsideAnyCircle = [&] (double RA, double dec)
+    {
+        for (size_t n = 0; n < numCircles; n++)
+        {
+            if (angularDistanceBetween(RACircleCenter[n], decCircleCenter[n], RA, dec, Angle::radians) <= radiusCircle[n])
+                return true;
+        }
+        return false;
+    };
+
+    // Reset possible previous selections
+
+    selectedColumnStarID.clear();
+    selectedColumnStarRA.clear();
+    selectedColumnStarDec.clear();
+    selectedColumnStarVmag.clear();
+    selectedVariableColumnStars.clear();
+
+    for (auto const& star: starDB)
+    {
+        const unsigned int starID = star.first;
+        double RA, dec, Vmag;
+        tie(RA, dec, Vmag) = star.second;
+
+        if (Vmag > magnitudeLimit)
+            continue;
+
+        if (angularDistanceBetween(RACircleCenter[middle], decCircleCenter[middle], RA, dec, Angle::radians) > radiusEnclosingCircle)
+            continue;
+
+        if (isInsideAnyCircle(RA, dec))
+        {
+            selectedColumnStarID.push_back(starID);
+            selectedColumnStarRA.push_back(RA);
+            selectedColumnStarDec.push_back(dec);
+            selectedColumnStarVmag.push_back(Vmag);
+
+            if (deltaMagnitude.find(starID) != deltaMagnitude.end())
+            {
+                selectedVariableColumnStars.push_back(selectedColumnStarID.size()-1);
+            }
+        }
+    }
+
+    return selectedColumnStarID.size();
 }
 
 
@@ -696,6 +817,31 @@ void Sky::aberrateSelectedGhostOrigPositions(Platform &platform, string aberrati
 
 
 
+
+
+
+
+/**
+ * \brief Calculate the apparent positions of the stars selected with selectColumnStarsWithinCircles().
+ *
+ * \param platform                  Current platform, see aberrateSelectedPositions()
+ * \param aberrationCorrectionType  Type of the aberration correction: differential or absolute
+ * \param startTime                 Start time of the exposure [s]
+ */
+
+void Sky::aberrateSelectedColumnStarPositions(Platform &platform, string aberrationCorrectionType, double startTime)
+{
+    aberrateSelectedPositions(platform, selectedColumnStarID, selectedColumnStarRA, selectedColumnStarDec, aberrationCorrectionType, startTime);
+}
+
+
+
+
+
+
+
+
+
 /**
  * \brief Return the star ID, RA, Dec, and Vmag of selected star #n
  *
@@ -742,6 +888,39 @@ tuple<unsigned int, double, double, double> Sky::getSelectedGhostOrig(unsigned i
     {
         return make_tuple(selectedGhostOrigID[n], selectedGhostOrigRA[n], selectedGhostOrigDec[n], selectedGhostOrigVmag[n]);
     }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/**
+ * \brief Return the star ID, RA, Dec, and Vmag of the selected column star #n
+ *
+ * \detail Important: first call selectColumnStarsWithinCircles() to get a selection of stars.
+ *
+ * \param n: 0 <= n < number of selected column stars
+ *
+ * \return (starID, RA [rad], Dec [rad], Vmag)
+ */
+
+tuple<unsigned int, double, double, double> Sky::getSelectedColumnStar(unsigned int n)
+{
+    if (n >= selectedColumnStarID.size())
+    {
+        throw IllegalArgumentException("Sky::getSelectedColumnStar(): star number " + to_string(n) + " is not smaller than " + to_string(selectedColumnStarID.size()));
+    }
+
+    return make_tuple(selectedColumnStarID[n], selectedColumnStarRA[n], selectedColumnStarDec[n], selectedColumnStarVmag[n]);
 }
 
 

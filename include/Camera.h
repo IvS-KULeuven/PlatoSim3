@@ -73,6 +73,8 @@ class Camera : public HDF5Writer
     protected:
 
         virtual tuple<unsigned long, unsigned long> makeStarCatalogSelection(Detector &detector, double startTime, double exposureTime);
+        unsigned long makeColumnStarSelection(Detector &detector, double startTime);
+        void exposeColumnsWithStars(Detector &detector, unsigned long numColumnStars, double fluxFactor, double exposureTime);
 
         int beginExposureNr;                 // Sequential number of first exposure. useful for slurm parallellisation
         int numExposures;                    // Number of exposures

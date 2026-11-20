@@ -508,6 +508,36 @@ tuple<bool, double, double> DetectorWithAnalyticGaussianPSF::addFlux(double xFP,
         return make_tuple(false, row0, column0);
     }
 
+    addGaussianPsfToMap(pixelMap, row0, column0, xFP, yFP, flux);
+
+    // That's it!
+
+    return make_tuple(true, row0, column0);
+}
+
+
+
+
+
+
+
+
+
+
+/**
+ * \brief: Add the Gaussian PSF of a star to the given map. The PSF is normalised over its full range,
+ *         also when only part of it falls on the map.
+ *
+ * \param map:     Map to which the PSF is added
+ * \param row0:    Real-valued row index of the star in the map [pixels]
+ * \param column0: Real-valued column index of the star in the map [pixels]
+ * \param xFP:     X-coordinate of the star in the focal plane, which sets the shape of the PSF [mm]
+ * \param yFP:     Y-coordinate of the star in the focal plane, which sets the shape of the PSF [mm]
+ * \param flux:    Flux of the star [photons]
+ */
+
+void DetectorWithAnalyticGaussianPSF::addGaussianPsfToMap(arma::Mat<float> &map, double row0, double column0, double xFP, double yFP, double flux)
+{
     // Depending on the angular distance from the optical axis, the PSF increases in size.
     // Determine the standard deviations in both directions.
     // Recall:
@@ -558,24 +588,44 @@ tuple<bool, double, double> DetectorWithAnalyticGaussianPSF::addFlux(double xFP,
 
     preFactor = preFactor / sum * flux;
 
-    // Paste the 2D gaussian PSF into the pixelMap
+    // Paste the 2D gaussian PSF into the map
 
     for (int row = int(floor(row0))-range; row < int(floor(row0))+range+1; row++)
     {
-        if ((row < 0) || (row >= numRowsPixelMap)) continue;
+        if ((row < 0) || (row >= (int)map.n_rows)) continue;
 
         for (int col = int(floor(column0))-range; col < int(floor(column0))+range+1; col++)
         {
-            if ((col < 0) || (col >= numColumnsPixelMap)) continue;
+            if ((col < 0) || (col >= (int)map.n_cols)) continue;
 
             arma::colvec x = {double(row), double(col)};
-            pixelMap(row, col) += preFactor * arma::exp(-0.5 * (x - mu).t() * invCov * (x-mu)).at(0,0);
+            map(row, col) += preFactor * arma::exp(-0.5 * (x - mu).t() * invCov * (x-mu)).at(0,0);
         }
     }
+}
 
-    // That's it!
 
-    return make_tuple(true, row0, column0);
+
+
+
+
+
+
+
+/**
+ * \brief: Add a star outside the subfield, along its columns, to the column star map, with the same
+ *         Gaussian PSF as the stars in the subfield.
+ *
+ * \param xFP:    X-coordinate of the star in the focal plane [mm]
+ * \param yFP:    Y-coordinate of the star in the focal plane [mm]
+ * \param row:    Real-valued CCD row of the star [pixels]
+ * \param column: Real-valued column of the star, relative to the first column of the subfield [pixels]
+ * \param flux:   Flux of the star during the exposure [photons]
+ */
+
+void DetectorWithAnalyticGaussianPSF::addStarToColumnMap(double xFP, double yFP, double row, double column, double flux)
+{
+    addGaussianPsfToMap(columnStarMap, row, column, xFP, yFP, flux);
 }
 
 

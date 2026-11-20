@@ -51,6 +51,7 @@ class DetectorWithAnalyticNonGaussianPSF: public Detector
     protected:
 
         void integrateLight(int exposureNr, double startTime, double exposureTime) override;
+        void addStarToColumnMap(double xFP, double yFP, double row, double column, double flux) override;
         void generateFlatfieldMap();
         void readInFlatfieldMap();
 

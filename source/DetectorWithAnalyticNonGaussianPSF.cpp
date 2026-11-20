@@ -800,6 +800,33 @@ tuple<bool, double, double> DetectorWithAnalyticNonGaussianPSF::addFlux(double x
 }
 
 /**
+ * \brief: Add a star outside the subfield, along its columns, to the column star map, with the same
+ *         PSF as the stars in the subfield (addFluxToMap(), which is also used by derived classes).
+ *
+ * \param xFP:    X-coordinate of the star in the focal plane [mm]
+ * \param yFP:    Y-coordinate of the star in the focal plane [mm]
+ * \param row:    Real-valued CCD row of the star [pixels]
+ * \param column: Real-valued column of the star, relative to the first column of the subfield [pixels]
+ * \param flux:   Flux of the star during the exposure [photons]
+ */
+
+void DetectorWithAnalyticNonGaussianPSF::addStarToColumnMap(double xFP, double yFP, double row, double column, double flux)
+{
+    const double r = rad2deg(camera.getGnomonicRadialDistanceFromOpticalAxis(xFP, yFP));
+    const double p = atan2(yFP, xFP);
+
+    addFluxToMap(columnStarMap, row, column, r, p, flux);
+}
+
+
+
+
+
+
+
+
+
+/**
  * \brief Insert the extended ghost with the given radius and flux at the given focal-plane position.
  *
  * Note that the extended source will not be convolved with the PSF, for practical reasons (but since the

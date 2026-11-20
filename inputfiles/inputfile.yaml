@@ -236,6 +236,7 @@ CCD:
       Stability:                     5.0             # Temperature stability of the dark current [e-/K/s]
     CTI:
         Model:                       Short2013       # The method used to generate the CTI, either "Simple", "Short2013", or "Short2013FromFile"
+        ColumnStarsMagnitudeLimit:   16              # Short2013 models only: stars outside the subfield, in its columns, are simulated if V <= this limit [mag]
         Simple:
             MeanCTE:                 0.99999         # Mean CTE over all CCD pixels
         Short2013:

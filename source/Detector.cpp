@@ -651,6 +651,10 @@ void Detector::updateParameters(double time)
         throw ConfigurationException("Detector: Unkown CTI model specification in configuration file");
     }
 
+    // Stars outside the subfield, along its columns
+
+    columnStarsMagnitudeLimit = configParam.getDouble("CCD/CTI/ColumnStarsMagnitudeLimit");
+
      // We only need to read in the bad pixel parameter if bad pixels should be included
 
      if (includeBadPixelMap)
@@ -2332,6 +2336,136 @@ arma::Row<float> Detector::estimateBackgroundPerColumn()
     background += static_cast<float>(skyBackground + meanDarkSignalPixelMap);
 
     return background;
+}
+
+
+
+
+
+
+
+/**
+ * \brief: Return whether the stars outside the subfield, along its columns, need to be simulated.
+ *         They are needed to set the state of the traps in the Short et al. (2013) CTI model.
+ *
+ * \return True if the stars along the columns are needed, false otherwise.
+ */
+
+bool Detector::includesColumnStars()
+{
+    return includeCTIeffects && (CTImodel == "Short2013" || CTImodel == "Short2013FromFile");
+}
+
+
+
+
+
+
+
+/**
+ * \brief: Return the magnitude limit for the stars along the columns of the subfield.
+ *
+ * \return Only stars with a V magnitude <= this limit are simulated along the columns.
+ */
+
+double Detector::getColumnStarsMagnitudeLimit()
+{
+    return columnStarsMagnitudeLimit;
+}
+
+
+
+
+
+
+
+/**
+ * \brief: Return the focal-plane coordinates of the strip on the CCD that contains the columns of the
+ *         subfield, over all CCD rows, with a margin of numColumnStarMarginPixels on each side.
+ *         The strip is long and narrow, so it is cut along the rows into segments that are not longer
+ *         than the strip is wide. A circle around each segment then covers little else than the segment.
+ *
+ * \return For each segment (xCentre, yCentre, x00, y00, x11, y11): centre, lower left and upper right
+ *         corner of the segment [mm]
+ */
+
+vector<tuple<double, double, double, double, double, double>> Detector::getFocalPlaneCoordinatesOfColumnStripSegments()
+{
+    const double firstColumn = subFieldZeroPointColumn - numColumnStarMarginPixels;
+    const double endColumn = subFieldZeroPointColumn + numColumnsPixelMap + numColumnStarMarginPixels;
+    const double firstRow = -numColumnStarMarginPixels;
+    const double endRow = numRows + numColumnStarMarginPixels;
+
+    const double stripWidth = endColumn - firstColumn;                                         // [pixels]
+    const double stripLength = endRow - firstRow;                                              // [pixels]
+    const unsigned int numSegments = max(1u, static_cast<unsigned int>(ceil(stripLength / stripWidth)));
+    const double segmentLength = stripLength / numSegments;                                    // [pixels]
+
+    vector<tuple<double, double, double, double, double, double>> segments;
+    segments.reserve(numSegments);
+
+    for (unsigned int segment = 0; segment < numSegments; segment++)
+    {
+        const double segmentFirstRow = firstRow + segment * segmentLength;
+        const double segmentEndRow = segmentFirstRow + segmentLength;
+
+        double xCentre, yCentre, x00, y00, x11, y11;
+        tie(xCentre, yCentre) = pixelToFocalPlaneCoordinates((segmentFirstRow + segmentEndRow) / 2.0, (firstColumn + endColumn) / 2.0);
+        tie(x00, y00) = pixelToFocalPlaneCoordinates(segmentFirstRow, firstColumn);
+        tie(x11, y11) = pixelToFocalPlaneCoordinates(segmentEndRow, endColumn);
+
+        segments.push_back(make_tuple(xCentre, yCentre, x00, y00, x11, y11));
+    }
+
+    return segments;
+}
+
+
+
+
+
+
+
+/**
+ * \brief: Empty the map with the stars along the columns of the subfield, before a new exposure.
+ */
+
+void Detector::resetColumnStarMap()
+{
+    columnStarMap.zeros(numRows, numColumnsPixelMap);
+}
+
+
+
+
+
+
+
+/**
+ * \brief: Add a star outside the subfield, along its columns, to the column star map. The PSF is
+ *         drawn by the PSF model of the derived class. Stars whose centre is too far from the
+ *         columns of the subfield are ignored.
+ *
+ * \param xFP:  X-coordinate of the star in the focal plane, in the FP reference frame [mm]
+ * \param yFP:  Y-coordinate of the star in the focal plane, in the FP reference frame [mm]
+ * \param flux: Flux of the star during the exposure [photons]
+ *
+ * \return True if the star was added, false if it is too far from the columns of the subfield.
+ */
+
+bool Detector::addColumnStar(double xFP, double yFP, double flux)
+{
+    double row, column;
+    tie(row, column) = focalPlaneToPixelCoordinates(xFP, yFP);        // CCD pixel coordinates
+    column -= subFieldZeroPointColumn;
+
+    const double margin = numColumnStarMarginPixels;
+
+    if ((column < -margin) || (column >= numColumnsPixelMap + margin) || (row < -margin) || (row >= numRows + margin))
+        return false;
+
+    addStarToColumnMap(xFP, yFP, row, column, flux);
+    return true;
 }
 
 

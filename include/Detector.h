@@ -91,6 +91,12 @@ class Detector: public HDF5Writer
         virtual tuple<bool, double, double> addExtendedGhost(double xFP, double yFP, double radius, double flux) = 0;
 
         bool isInPixelMap(double row, double column);
+
+        bool includesColumnStars();
+        double getColumnStarsMagnitudeLimit();
+        vector<tuple<double, double, double, double, double, double>> getFocalPlaneCoordinatesOfColumnStripSegments();
+        void resetColumnStarMap();
+        bool addColumnStar(double xFP, double yFP, double flux);
         bool isInSubfield(double xFPmm, double yFPmm);
         bool constantSkyBackground;
 
@@ -145,6 +151,7 @@ class Detector: public HDF5Writer
                                   const vector<double> &trapDensity, const vector<double> &alpha,
                                   const vector<double> &releaseFraction, arma::Mat<float> &occupiedTraps);
         arma::Row<float> estimateBackgroundPerColumn();
+        virtual void addStarToColumnMap(double xFP, double yFP, double row, double column, double flux) = 0;
         void makeSubGroupForCosmics(string field, int exposureNr);
 
         void applyParticulateContamination();
@@ -325,6 +332,10 @@ class Detector: public HDF5Writer
         static const unsigned int numCTIBufferRows = 500;  // Nr of CCD rows below the subfield that are simulated to set the trap occupancy
         arma::Row<float> openShutterSmearingPerColumn;     // Open-shutter smearing of the current exposure, for each column [e-]
         double meanDarkSignalPixelMap;           // Mean dark signal in the pixel map for the current exposure [e-]
+
+        double columnStarsMagnitudeLimit;        // Only stars brighter than this V magnitude are simulated along the columns
+        arma::Mat<float> columnStarMap;          // Stars along the columns of the subfield: all CCD rows x subfield columns [photons]
+        static const int numColumnStarMarginPixels = 20;   // Stars this far beyond the subfield columns can still put flux in them [pixels]
 
         double chargeInjectionLevel;             // Percentage of the full well to be filled by charge injection [0-100]
         int injectionRowInterval;                // Charge will be injected every XX CCD row [integer: in 1 - numrows] starting from firstInjectedRow.
