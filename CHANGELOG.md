@@ -16,6 +16,7 @@ Checklist to update for a future release:
 
 * Short et al. (2013) CTI model, issue #989: the trap occupancy at the start of a subfield now follows from simulating 500 rows below it.
   These rows contain the background and the stars along the columns of the subfield (see below).
+* The cosmic rays now follow `RandomSeeds/CosmicSeed`. The seed was not read, so the cosmic rays did not depend on it, and changed with every change to the code.
 
 ### Changed
 
