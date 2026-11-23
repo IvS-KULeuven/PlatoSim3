@@ -21,7 +21,7 @@ Checklist to update for a future release:
 
 ### Added
 
-* New parameter `CCD/CTI/ColumnStarsMagnitudeLimit` (default 16): magnitude limit for the stars outside the subfield, in its columns over the full height of the CCD. The stars brighter than this V magnitude can be selected from the star catalogue and added to a map of these columns with the PSF model of the simulation. They are not used in the simulation yet.
+* New parameter `CCD/CTI/ColumnStarsMagnitudeLimit` magnitude limit for the stars outside the subfield, in its columns over the full height of the CCD.
 ## 30/10/2026: 3.8.0
 
 **Before you update a source installation:** this release changes the bundled C++ libraries (HDF5 2.2.0, Armadillo 15.6.0, newer yaml-cpp and Faddeeva, and zlib as a new library). After updating, remove the old libraries and run the full installation again: `rm -rf dependencies/Installs` followed by `./install.sh` (needs CMake 3.26 or more recent). Install the Python packages again with uv, since Poetry is no longer supported.

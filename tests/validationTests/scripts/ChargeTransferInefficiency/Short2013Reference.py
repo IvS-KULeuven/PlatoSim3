@@ -1,5 +1,6 @@
 """
-Test of the start state of the Short et al. (2013) CTI model in a subfield.
+Tests of the start state of the Short et al. (2013) CTI model in a subfield: the background
+and the stars below the subfield.
 """
 
 import numpy as np
@@ -70,5 +71,56 @@ class Short2013Subfield(Short2013Base):
         return np.abs(self.small - self.large).max() < 0.5
 
 
+class Short2013ColumnStars(Short2013Base):
+    """
+    A star below the subfield, in the same columns, must leave the same traps behind as in a
+    subfield that contains the star.
+    """
+
+    def setNr(self):
+        self.nr = "016.5"
+
+    def setAllEffects(self):
+        super().setAllEffects()
+        self.sim["Sky/SkyBackground/BackgroundValue"] = 100
+        self.sim["CCD/IncludeQuantumEfficiency"] = "yes"
+        self.sim["SubField/ZeroPointColumn"] = 2000
+        self.sim["SubField/NumColumns"] = 8
+        self.sim["SubField/NumSmearingOverscanRows"] = 2
+        self.sim["CCD/CTI/ColumnStarsMagnitudeLimit"] = 16
+        self.firstRow = 3000
+        self.numRows = 40
+        self.extraRows = 700
+
+    def runSimulation(self):
+        catalog = self.outputDir + "/stars.txt"
+        self.sim.createStarCatalogFileFromPixelCoordinates(np.array([self.firstRow - 30.3]), np.array([2004.2]),
+                                                           np.array([10.0]), np.array([1]), catalog)
+
+        # Small subfield above the star, with and without the stars along the columns
+
+        self.sim["SubField/ZeroPointRow"] = self.firstRow
+        self.sim["SubField/NumRows"] = self.numRows
+        self.withColumnStars, _ = self.runMaps(True)
+
+        self.sim["CCD/CTI/ColumnStarsMagnitudeLimit"] = -100
+        self.withoutColumnStars, _ = self.runMaps(True)
+        self.sim["CCD/CTI/ColumnStarsMagnitudeLimit"] = 16
+
+        # Large subfield that contains the star. It has the same centre as the small one, because the
+        # mapped PSF model uses the PSF of the centre of the subfield.
+
+        self.sim["SubField/ZeroPointRow"] = self.firstRow - self.extraRows
+        self.sim["SubField/NumRows"] = self.numRows + 2 * self.extraRows
+        large, _ = self.runMaps(True)
+        self.large = large[self.extraRows:self.extraRows + self.numRows]
+
+    def compare(self):
+        matches = np.abs(self.withColumnStars - self.large).max() < 0.1
+        starMatters = np.abs(self.withoutColumnStars - self.large).max() > 10
+        return matches and starMatters
+
+
 if __name__ == "__main__":
-    print(Short2013Subfield.__name__, Short2013Subfield().run())
+    for test in (Short2013Subfield, Short2013ColumnStars):
+        print(test.__name__, test().run())

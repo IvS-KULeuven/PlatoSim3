@@ -33,7 +33,7 @@ from openShutterSmearing                           import OpenShutterSmearing
 from ChargeTransferInefficiency.simpleCTI          import SimpleCTI
 from ChargeTransferInefficiency.Short2013          import Short2013CTI
 from ChargeTransferInefficiency.Short2013FromFile  import Short2013CTIFromFile
-from ChargeTransferInefficiency.Short2013Reference import Short2013Subfield
+from ChargeTransferInefficiency.Short2013Reference import Short2013Subfield, Short2013ColumnStars
 from photonNoise                                   import PhotonNoise
 from readOutNoise                                  import ReadoutNoise
 from fullWellSaturation                            import FullWellSaturation
@@ -93,6 +93,7 @@ myTests = [
     (AnalyticGaussianPSF(),        "Analytic Gaussian PSF"),
     (Short2013CTI(),               "Short 2013 model"),
     (Short2013Subfield(),          "Short 2013 model: subfield against larger subfield"),
+    (Short2013ColumnStars(),       "Short 2013 model: star below the subfield"),
     (SPRTest(),                    "Stellar pollution ratio (SPR)"),
     (JitterOnCameras(),            "Jitter on different cameras"),
     (ReadoutNoise(),               "Readout Noise"),
