@@ -151,6 +151,7 @@ class Detector: public HDF5Writer
                                   const vector<double> &trapDensity, const vector<double> &alpha,
                                   const vector<double> &releaseFraction, arma::Mat<float> &occupiedTraps);
         arma::Row<float> estimateBackgroundPerColumn();
+        double getMeanThroughputEfficiency();
         virtual void addStarToColumnMap(double xFP, double yFP, double row, double column, double flux) = 0;
         void makeSubGroupForCosmics(string field, int exposureNr);
 

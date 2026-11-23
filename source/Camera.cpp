@@ -542,6 +542,12 @@ void Camera::exposeDetectorWithStars(Detector &detector, double startTime, doubl
     unsigned long numStars, numPointLikeGhosts;
     tie(numStars, numPointLikeGhosts) = makeStarCatalogSelection(detector, startTime, exposureTime);
 
+    // If needed (e.g. for the CTI), also select the stars outside the sub-field, along its columns.
+
+    const bool includeColumnStars = detector.includesColumnStars();
+    const unsigned long numColumnStars = includeColumnStars ? makeColumnStarSelection(detector, startTime) : 0;
+    bool columnStarsExposed = false;
+
     // If the telescope and/or platform show small variations (e.g. due to jitter) during the exposure,
     // the exposure time is split up in many small intervals, to track the effect of these variations
     // on the exposure. The largest time interval for which the variations can still be reliably tracked
@@ -586,6 +592,15 @@ void Camera::exposeDetectorWithStars(Detector &detector, double startTime, doubl
 
         if(includeExtendedGhosts)
             coefficients = (*extendedGhostRadiusCoefficients)();
+
+        // The stars along the columns of the sub-field are added once, for the whole exposure,
+        // at their position at the start of the exposure.
+
+        if (includeColumnStars && !columnStarsExposed)
+        {
+            exposeColumnsWithStars(detector, numColumnStars, fluxFactor, exposureTime);
+            columnStarsExposed = true;
+        }
 
         // Loop over the selected stars and add their flux to the sub-field
         // Also add the extended ghosts (if enabled)

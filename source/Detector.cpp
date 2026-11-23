@@ -2311,22 +2311,7 @@ void Detector::applySimpleCTImodel()
 
 arma::Row<float> Detector::estimateBackgroundPerColumn()
 {
-    double skyBackground = camera.getTotalSkyBackground();                                 // [photons]
-
-    if (includeRelativeTransmissivity)
-        skyBackground *= expectedValueRelativeTransmissivity;
-
-    if (includePolarization)
-        skyBackground *= expectedValuePolarization;
-
-    if (includeParticulateContamination)
-        skyBackground *= particulateContaminationEfficiency;
-
-    if (includeMolecularContamination)
-        skyBackground *= molecularContaminationEfficiency;
-
-    if (includeQuantumEfficiency)
-        skyBackground *= meanQE;                                                           // [e-]
+    double skyBackground = camera.getTotalSkyBackground() * getMeanThroughputEfficiency();   // [e-]
 
     if (includeStraylight && !straylightValues.empty())
         skyBackground += straylightValues.back();
@@ -2336,6 +2321,44 @@ arma::Row<float> Detector::estimateBackgroundPerColumn()
     background += static_cast<float>(skyBackground + meanDarkSignalPixelMap);
 
     return background;
+}
+
+
+
+
+
+
+
+/**
+ * \brief: Return the mean throughput efficiency, used to convert photons to electrons in the parts of
+ *         the CCD that are not simulated pixel by pixel. It combines the expected values of the relative
+ *         transmissivity and the polarisation, the particulate and molecular contamination, and the mean
+ *         quantum efficiency (incl. its mean angle dependency), for those effects that are switched on. These
+ *         are the same factors as in generateThroughputMap().
+ *
+ * \return Mean throughput efficiency [e- / photon]
+ */
+
+double Detector::getMeanThroughputEfficiency()
+{
+    double efficiency = 1.0;
+
+    if (includeRelativeTransmissivity)
+        efficiency *= expectedValueRelativeTransmissivity;
+
+    if (includePolarization)
+        efficiency *= expectedValuePolarization;
+
+    if (includeParticulateContamination)
+        efficiency *= particulateContaminationEfficiency;
+
+    if (includeMolecularContamination)
+        efficiency *= molecularContaminationEfficiency;
+
+    if (includeQuantumEfficiency)
+        efficiency *= meanQE * meanAngleDependencyQE;
+
+    return efficiency;
 }
 
 
@@ -2622,8 +2645,8 @@ void Detector::applyShort2013CTImodel(string map)
     }
 
     // The traps at the start of the pixel map are in the state left by the rows below the subfield.
-    // Simulate the last of those rows, assuming that they only contain the background. Rows that
-    // are not exposed only have dark signal.
+    // Simulate the last of those rows. They contain the background and, if included, the stars along
+    // the columns of the subfield. Rows that are not exposed only have dark signal.
 
     if (map == "pixelMap")
     {
@@ -2644,12 +2667,22 @@ void Detector::applyShort2013CTImodel(string map)
         const arma::Row<float> darkSignal(numColumnsPixelMap, arma::fill::value(static_cast<float>(meanDarkSignalPixelMap)));
         const unsigned int firstBufferRow = (subFieldZeroPointRow > numCTIBufferRows) ? subFieldZeroPointRow - numCTIBufferRows : 0;
 
+        const bool addColumnStars = includesColumnStars() && (columnStarMap.n_rows == numRows);
+        const float meanThroughputEfficiency = static_cast<float>(getMeanThroughputEfficiency());
+
         numberOfOccupiedTraps->zeros();
 
         for (unsigned int ccdRow = firstBufferRow; ccdRow < subFieldZeroPointRow; ccdRow++)
         {
             const arma::Row<double> crossedRows(numColumnsPixelMap, arma::fill::value(static_cast<double>(ccdRow + 1)));
             arma::Row<float> charge = (ccdRow < firstRowExposed) ? darkSignal : background;
+
+            if (addColumnStars && (ccdRow >= firstRowExposed))
+            {
+                charge += columnStarMap.row(ccdRow) * meanThroughputEfficiency;
+                charge = arma::clamp(charge, 0.0f, static_cast<float>(fullWellSaturationLimit));
+            }
+
             transferRowShort2013(charge, crossedRows, bufferTrapDensity, bufferAlpha, bufferReleaseFraction, *numberOfOccupiedTraps);
         }
     }

@@ -14,7 +14,8 @@ Checklist to update for a future release:
 
 ### Fixed
 
-* Short et al. (2013) CTI model, issue #989: the trap occupancy at the start of a subfield now follows from simulating 500 background rows below it, which removes the dark edge at the bottom of subfields. Stars outside the subfield are not taken into account yet.
+* Short et al. (2013) CTI model, issue #989: the trap occupancy at the start of a subfield now follows from simulating 500 rows below it.
+  These rows contain the background and the stars along the columns of the subfield (see below).
 
 ### Changed
 
