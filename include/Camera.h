@@ -76,6 +76,14 @@ class Camera : public HDF5Writer
         unsigned long makeColumnStarSelection(Detector &detector, double startTime);
         void exposeColumnsWithStars(Detector &detector, unsigned long numColumnStars, double fluxFactor, double exposureTime);
 
+        // Segments of the strip with the subfield columns, for the mapped PSF: the segments as given by the detector,
+        // and for each one the centre and two corners after the inverse field distortion (or without it, close to
+        // 80 mm), followed by the shifted centre for the distortion jump (NaN if not needed) [mm]. The mapped field
+        // distortion doesn't change in time, so these only need to be computed again when the segments change.
+
+        vector<tuple<double, double, double, double, double, double>> columnStripSegments;
+        vector<array<double, 8>> columnStripSegmentsInverse;
+
         int beginExposureNr;                 // Sequential number of first exposure. useful for slurm parallellisation
         int numExposures;                    // Number of exposures
 

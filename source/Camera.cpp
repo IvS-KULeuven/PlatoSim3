@@ -1067,31 +1067,73 @@ unsigned long Camera::makeColumnStarSelection(Detector &detector, double startTi
 
     const double radiusWithoutMappedDistortion = 79.0;     // [mm], with a margin of 1 mm on the 80 mm
 
-    for (auto const& segment: detector.getFocalPlaneCoordinatesOfColumnStripSegments())
+    const auto segments = detector.getFocalPlaneCoordinatesOfColumnStripSegments();
+
+    if (isMapped)
     {
-        double centreXmm, centreYmm, corner00Xmm, corner00Ymm, corner11Xmm, corner11Ymm;
-        tie(centreXmm, centreYmm, corner00Xmm, corner00Ymm, corner11Xmm, corner11Ymm) = segment;
+        // The inverse of the mapped field distortion is a slow search, and the result doesn't change
+        // in time, so it is only computed again when the segments change.
 
-        const double centreRadius = hypot(centreXmm, centreYmm);                                                         // [mm]
-        const double maxRadius = max({centreRadius, hypot(corner00Xmm, corner00Ymm), hypot(corner11Xmm, corner11Ymm)});   // [mm]
-
-        if (isMapped && (maxRadius > radiusWithoutMappedDistortion) && (centreRadius > 0.0))
+        if (segments != columnStripSegments)
         {
-            // Largest distortion of the distortion map, as an angle on the sky in the direction of the segment
+            columnStripSegments = segments;
+            columnStripSegmentsInverse.clear();
 
             const double maxDistortion = dynamic_cast<DetectorWithMappedPSF&>(detector).getMaxMappedFieldDistortion();   // [mm]
-            const double xShifted = centreXmm * (centreRadius - maxDistortion) / centreRadius;
-            const double yShifted = centreYmm * (centreRadius - maxDistortion) / centreRadius;
 
-            double centreRA, centreDec, shiftedRA, shiftedDec;
-            tie(centreRA, centreDec) = focalPlaneToSkyCoordinates(centreXmm, centreYmm);
-            tie(shiftedRA, shiftedDec) = focalPlaneToSkyCoordinates(xShifted, yShifted);
-            const double distortionJump = angularDistanceBetween(centreRA, centreDec, shiftedRA, shiftedDec, Angle::radians);
+            for (auto const& segment: segments)
+            {
+                double centreXmm, centreYmm, corner00Xmm, corner00Ymm, corner11Xmm, corner11Ymm;
+                tie(centreXmm, centreYmm, corner00Xmm, corner00Ymm, corner11Xmm, corner11Ymm) = segment;
 
-            addCircle(centreXmm, centreYmm, corner00Xmm, corner00Ymm, corner11Xmm, corner11Ymm, false, distortionJump);
+                const double centreRadius = hypot(centreXmm, centreYmm);                                                         // [mm]
+                const double maxRadius = max({centreRadius, hypot(corner00Xmm, corner00Ymm), hypot(corner11Xmm, corner11Ymm)});   // [mm]
+
+                if ((maxRadius > radiusWithoutMappedDistortion) && (centreRadius > 0.0))
+                {
+                    // No distortion, and the centre shifted over the largest distortion of the distortion map,
+                    // to enlarge the circle with the distortion jump
+
+                    const double xShifted = centreXmm * (centreRadius - maxDistortion) / centreRadius;
+                    const double yShifted = centreYmm * (centreRadius - maxDistortion) / centreRadius;
+
+                    columnStripSegmentsInverse.push_back({centreXmm, centreYmm, corner00Xmm, corner00Ymm, corner11Xmm, corner11Ymm,
+                                                          xShifted, yShifted});
+                }
+                else
+                {
+                    detector.applyInverseDistortion(centreXmm, centreYmm);
+                    detector.applyInverseDistortion(corner00Xmm, corner00Ymm);
+                    detector.applyInverseDistortion(corner11Xmm, corner11Ymm);
+
+                    const double nan = numeric_limits<double>::quiet_NaN();
+                    columnStripSegmentsInverse.push_back({centreXmm, centreYmm, corner00Xmm, corner00Ymm, corner11Xmm, corner11Ymm, nan, nan});
+                }
+            }
         }
-        else
+
+        for (auto const& point: columnStripSegmentsInverse)
         {
+            double distortionJump = 0.0;     // [radians]
+
+            if (!std::isnan(point[6]))
+            {
+                double centreRA, centreDec, shiftedRA, shiftedDec;
+                tie(centreRA, centreDec) = focalPlaneToSkyCoordinates(point[0], point[1]);
+                tie(shiftedRA, shiftedDec) = focalPlaneToSkyCoordinates(point[6], point[7]);
+                distortionJump = angularDistanceBetween(centreRA, centreDec, shiftedRA, shiftedDec, Angle::radians);
+            }
+
+            addCircle(point[0], point[1], point[2], point[3], point[4], point[5], false, distortionJump);
+        }
+    }
+    else
+    {
+        for (auto const& segment: segments)
+        {
+            double centreXmm, centreYmm, corner00Xmm, corner00Ymm, corner11Xmm, corner11Ymm;
+            tie(centreXmm, centreYmm, corner00Xmm, corner00Ymm, corner11Xmm, corner11Ymm) = segment;
+
             addCircle(centreXmm, centreYmm, corner00Xmm, corner00Ymm, corner11Xmm, corner11Ymm, true, 0.0);
         }
     }
