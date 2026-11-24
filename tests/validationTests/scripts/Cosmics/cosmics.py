@@ -11,7 +11,8 @@ import h5py
 This test is designed to check the behaviour of the cosmics in the PlatoSIM simulator. The test runs the simulation three times,
 once without cosmic hits, once with a lower cosmic hit rate and trail length and once with a higher cosmic hit rate and trail length. The 
 conditions for this test to pass are: 
- - The observed amount of cosmic hits and trail length matches the one expected from the input parameters.
+ - The observed amount of cosmic hits and trail length matches the one expected from the input parameters
+   (for the amount of hits, within 3 times the Poisson uncertainty of its mean over the exposures).
  - The observed amount of cosmic hits and trail length increases w.r.t. increasing CosmicHitRate- and TrailLength-parameters. 
  - The recorded cosmics in the output.hdf5 file watches the expected one.  
 """
@@ -126,7 +127,12 @@ class Cosmics(Test):
                  
                  minMean            = min(mean1Island, mean2Island)
                  maxMean            = max(mean1Island, mean2Island)
-                 condition2         = minMean < meanCosmics < maxMean
+
+                 # The number of hits per exposure follows a Poisson distribution, so the mean over the
+                 # exposures has an uncertainty of sqrt(meanCosmics / numExposures). Allow 3 times that.
+
+                 sigmaMean          = np.sqrt(meanCosmics / self.numExposures)
+                 condition2         = minMean - 3 * sigmaMean < meanCosmics < maxMean + 3 * sigmaMean
                  
                  return condition1 and condition2, meanCosmics, theoTrail
                  
