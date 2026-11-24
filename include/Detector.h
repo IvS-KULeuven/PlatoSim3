@@ -93,6 +93,8 @@ class Detector: public HDF5Writer
         bool isInPixelMap(double row, double column);
 
         bool includesColumnStars();
+        bool includesColumnStarsForCTI();
+        bool includesColumnStarsForSmearing();
         double getColumnStarsMagnitudeLimit();
         vector<tuple<double, double, double, double, double, double>> getFocalPlaneCoordinatesOfColumnStripSegments();
         void resetColumnStarMap();

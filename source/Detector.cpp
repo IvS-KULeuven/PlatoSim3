@@ -653,7 +653,7 @@ void Detector::updateParameters(double time)
 
     // Stars outside the subfield, along its columns
 
-    columnStarsMagnitudeLimit = configParam.getDouble("CCD/CTI/ColumnStarsMagnitudeLimit");
+    columnStarsMagnitudeLimit = configParam.getDouble("SubField/ColumnStarsMagnitudeLimit");
 
      // We only need to read in the bad pixel parameter if bad pixels should be included
 
@@ -2369,15 +2369,52 @@ double Detector::getMeanThroughputEfficiency()
 
 
 /**
- * \brief: Return whether the stars outside the subfield, along its columns, need to be simulated.
- *         They are needed to set the state of the traps in the Short et al. (2013) CTI model.
+ * \brief: Return whether the stars outside the subfield, along its columns, need to be simulated: for
+ *         the CTI (includesColumnStarsForCTI()), for the open-shutter smearing
+ *         (includesColumnStarsForSmearing()), or both.
  *
  * \return True if the stars along the columns are needed, false otherwise.
  */
 
 bool Detector::includesColumnStars()
 {
+    return includesColumnStarsForCTI() || includesColumnStarsForSmearing();
+}
+
+
+
+
+
+
+
+/**
+ * \brief: Return whether the stars outside the subfield, along its columns, are used for the CTI: they
+ *         set the state of the traps in the Short et al. (2013) CTI model.
+ *
+ * \return True if the stars along the columns are used for the CTI, false otherwise.
+ */
+
+bool Detector::includesColumnStarsForCTI()
+{
     return includeCTIeffects && (CTImodel == "Short2013" || CTImodel == "Short2013FromFile");
+}
+
+
+
+
+
+
+
+/**
+ * \brief: Return whether the stars outside the subfield, along its columns, are used for the open-shutter
+ *         smearing: during the readout, their light falls on the columns of the subfield.
+ *
+ * \return True if the stars along the columns are used for the open-shutter smearing, false otherwise.
+ */
+
+bool Detector::includesColumnStarsForSmearing()
+{
+    return includeOpenShutterSmearing;
 }
 
 
@@ -2454,19 +2491,22 @@ vector<tuple<double, double, double, double, double, double>> Detector::getFocal
  * \brief: Empty the stars along the columns of the subfield, before a new exposure.
  *
  * \details The CTI only needs the charge, row by row, of the numCTIBufferRows rows below the subfield,
- *          and the open-shutter smearing only needs the flux per column. The stars close to the subfield
- *          (from numColumnStarMarginPixels below the buffer rows up to numColumnStarMarginPixels above the
- *          subfield) are therefore put on the 2D map columnStarMap, which has another margin of
- *          numColumnStarMarginPixels on both sides, so that it contains their whole PSF. For the other
- *          stars, only the flux per column is kept, in columnStarFluxPerColumn.
+ *          and the open-shutter smearing only needs the flux per column outside the subfield. The stars
+ *          close to the subfield (from numColumnStarMarginPixels below the buffer rows, or below the
+ *          subfield if the CTI doesn't need them, up to numColumnStarMarginPixels above the subfield) are
+ *          therefore put on the 2D map columnStarMap, which has another margin of numColumnStarMarginPixels
+ *          on both sides, so that it contains their whole PSF and the part of it in the subfield can be left
+ *          out of the smearing. For the other stars, only the flux per column is kept, in
+ *          columnStarFluxPerColumn.
  */
 
 void Detector::resetColumnStarMap()
 {
     const int margin = numColumnStarMarginPixels;
     const int firstBufferRow = (subFieldZeroPointRow > numCTIBufferRows) ? subFieldZeroPointRow - numCTIBufferRows : 0;
+    const int firstRowOnMap = includesColumnStarsForCTI() ? firstBufferRow : (int)subFieldZeroPointRow;
 
-    columnStarNearFirstRow = firstBufferRow - margin;
+    columnStarNearFirstRow = firstRowOnMap - margin;
     columnStarNearEndRow = subFieldZeroPointRow + numRowsPixelMap + margin;
     columnStarMapFirstRow = columnStarNearFirstRow - margin;
 
@@ -2511,6 +2551,11 @@ bool Detector::addColumnStar(double xFP, double yFP, double flux)
         addStarToColumnMap(xFP, yFP, row - columnStarMapFirstRow, column, flux);
         return true;
     }
+
+    // The flux per column is only used for the open-shutter smearing
+
+    if (!includesColumnStarsForSmearing())
+        return false;
 
     if (row < firstRowExposed)
         return false;
@@ -2729,7 +2774,7 @@ void Detector::applyShort2013CTImodel(string map)
         const arma::Row<float> darkSignal(numColumnsPixelMap, arma::fill::value(static_cast<float>(meanDarkSignalPixelMap)));
         const unsigned int firstBufferRow = (subFieldZeroPointRow > numCTIBufferRows) ? subFieldZeroPointRow - numCTIBufferRows : 0;
 
-        const bool addColumnStars = includesColumnStars() && (columnStarMap.n_rows > 0)
+        const bool addColumnStars = includesColumnStarsForCTI() && (columnStarMap.n_rows > 0)
                                     && (columnStarMapFirstRow <= (int)firstBufferRow)
                                     && (columnStarMapFirstRow + (int)columnStarMap.n_rows >= (int)subFieldZeroPointRow);
         const float meanThroughputEfficiency = static_cast<float>(getMeanThroughputEfficiency());
@@ -2961,7 +3006,7 @@ void Detector::applyOpenShutterSmearing(float exposureTime)
 
     // The stars outside the subfield, along its columns (if included)
 
-    if (includesColumnStars() && (columnStarFluxPerColumn.n_elem == numColumnsPixelMap))
+    if (includesColumnStarsForSmearing() && (columnStarFluxPerColumn.n_elem == numColumnsPixelMap))
     {
         openShutterSmearing += getColumnStarFluxOutsideSubfield() * static_cast<float>(getMeanThroughputEfficiency());   // [e-]
     }

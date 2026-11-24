@@ -20,13 +20,12 @@ Checklist to update for a future release:
 
 ### Changed
 
-* With the Short et al. (2013) CTI models, the open-shutter smearing now also contains the stars outside the subfield, in its columns, that are brighter than `CCD/CTI/ColumnStarsMagnitudeLimit`.
-  Only the stars close to the 500 rows below the subfield are simulated pixel by pixel. For the other stars only the flux per column is computed, with the same PSF, which is much faster.
-  Stars in rows that are not exposed, or outside the field of view, are left out.
+* The open-shutter smearing now also contains the bright stars outside the subfield, in its columns, that are brighter than `SubField/ColumnStarsMagnitudeLimit.
+
 
 ### Added
 
-* New parameter `CCD/CTI/ColumnStarsMagnitudeLimit` magnitude limit for the stars outside the subfield, in its columns over the full height of the CCD.
+* New parameter `SubField/ColumnStarsMagnitudeLimit` (default 16): magnitude limit for the stars outside the subfield, in its columns over the full height of the CCD, used for the open-shutter smearing and the Short et al. (2013) CTI models.
 ## 30/10/2026: 3.8.0
 
 **Before you update a source installation:** this release changes the bundled C++ libraries (HDF5 2.2.0, Armadillo 15.6.0, newer yaml-cpp and Faddeeva, and zlib as a new library). After updating, remove the old libraries and run the full installation again: `rm -rf dependencies/Installs` followed by `./install.sh` (needs CMake 3.26 or more recent). Install the Python packages again with uv, since Poetry is no longer supported.

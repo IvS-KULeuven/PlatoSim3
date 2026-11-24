@@ -934,7 +934,6 @@ void Simulation::writeInputParametersToHDF5(ConfigurationParameters &configParam
     subGroup = "CCD/CTI";
     hdf5File->createGroup(parentGroup + "/" + subGroup);
     addString("Model");
-    addDouble("ColumnStarsMagnitudeLimit");
     subGroup = "CCD/CTI/Simple";
     hdf5File->createGroup(parentGroup + "/" + subGroup);
     addDouble("MeanCTE");
@@ -964,6 +963,7 @@ void Simulation::writeInputParametersToHDF5(ConfigurationParameters &configParam
     addInteger("NumBiasPrescanRows");
     addInteger("NumBiasPrescanColumns");
     addInteger("NumSmearingOverscanRows");
+    addDouble("ColumnStarsMagnitudeLimit");
     addInteger("SubPixels");
 
     subGroup = "Photometry";

@@ -87,7 +87,7 @@ class Short2013ColumnStars(Short2013Base):
         self.sim["SubField/ZeroPointColumn"] = 2000
         self.sim["SubField/NumColumns"] = 8
         self.sim["SubField/NumSmearingOverscanRows"] = 2
-        self.sim["CCD/CTI/ColumnStarsMagnitudeLimit"] = 16
+        self.sim["SubField/ColumnStarsMagnitudeLimit"] = 16
         self.firstRow = 3000
         self.numRows = 40
         self.extraRows = 700
@@ -103,9 +103,9 @@ class Short2013ColumnStars(Short2013Base):
         self.sim["SubField/NumRows"] = self.numRows
         self.withColumnStars, _ = self.runMaps(True)
 
-        self.sim["CCD/CTI/ColumnStarsMagnitudeLimit"] = -100
+        self.sim["SubField/ColumnStarsMagnitudeLimit"] = -100
         self.withoutColumnStars, _ = self.runMaps(True)
-        self.sim["CCD/CTI/ColumnStarsMagnitudeLimit"] = 16
+        self.sim["SubField/ColumnStarsMagnitudeLimit"] = 16
 
         # Large subfield that contains the star. It has the same centre as the small one, because the
         # mapped PSF model uses the PSF of the centre of the subfield.
