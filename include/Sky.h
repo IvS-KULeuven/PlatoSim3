@@ -14,6 +14,7 @@
 #include <memory>
 #include <tuple>
 #include <map>
+#include <array>
 
 #include "Logger.h"
 #include "Exceptions.h"
@@ -95,6 +96,23 @@ class Sky
         vector<double> selectedGhostOrigDec;
         vector<double> selectedGhostOrigVmag;
         vector<unsigned int> selectedVariableGhostOrigs;
+
+        // Stars of starDB that are brighter than columnStarCandidateLimit and within the circles of
+        // columnStarCandidateCircle* (the circles of selectColumnStarsWithinCircles(), enlarged with
+        // columnStarCandidateMargin), in the order of starDB. selectColumnStarsWithinCircles() only needs to go
+        // through these, as long as its circles stay within these enlarged circles.
+
+        void prepareColumnStarCandidates(const vector<double> &RA, const vector<double> &dec, const vector<double> &radius,
+                                         double magnitudeLimit);
+        vector<unsigned int> columnStarCandidateID;
+        vector<array<double, 3>> columnStarCandidatePosition;    // (RA [rad], dec [rad], Vmag), copied from starDB
+        vector<double> columnStarCandidateCircleRA;               // [rad]
+        vector<double> columnStarCandidateCircleDec;              // [rad]
+        vector<double> columnStarCandidateCircleRadius;           // [rad], incl. the margin
+        double columnStarCandidateLimit = 0.0;
+        size_t columnStarCandidateDatabaseSize = 0;
+        bool columnStarCandidatesPrepared = false;
+        static constexpr double columnStarCandidateMargin = 2.908882086657216e-4;   // 1 arcmin [rad]
 
         vector<unsigned int> selectedColumnStarID;     // IDs of the stars selected with selectColumnStarsWithinCircles()
         vector<double> selectedColumnStarRA;           //      Corresponding selected Right Ascension [rad]
