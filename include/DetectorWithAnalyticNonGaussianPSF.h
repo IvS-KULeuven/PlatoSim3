@@ -52,6 +52,7 @@ class DetectorWithAnalyticNonGaussianPSF: public Detector
 
         void integrateLight(int exposureNr, double startTime, double exposureTime) override;
         void addStarToColumnMap(double xFP, double yFP, double row, double column, double flux) override;
+        void addStarToColumnProfile(double xFP, double yFP, double row, double column, double flux) override;
         void generateFlatfieldMap();
         void readInFlatfieldMap();
 
@@ -70,6 +71,7 @@ class DetectorWithAnalyticNonGaussianPSF: public Detector
         string flatfieldSource;              // Determines how the flatfield gets determined 
         bool writeHighResolutionPSF;        // Wheter or not to write the high resosultion PSF to the HDF5 file
         bool writeDiffusedPSF;              // Wheter or not to write the high resosultion PSF to the HDF5 file 
+        arma::Mat<float> columnStarStrip;   // Strip of the subfield columns, just high enough for the PSF of one star along the columns
 
         // Photometry
   

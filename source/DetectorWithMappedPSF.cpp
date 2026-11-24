@@ -933,19 +933,7 @@ void DetectorWithMappedPSF::applyDiffusionKernel(arma::Mat<float> &map, double s
 
 void DetectorWithMappedPSF::addStarToColumnMap(double xFP, double yFP, double row, double column, double flux)
 {
-    // The stamp must hold the PSF and the diffusion kernel around the star, plus a margin
-
-    if (columnStarStampSize == 0)
-    {
-        const unsigned int kernelSize = (includeChargeDiffusion || includeJitterSmoothing) ? diffusionKernelImageSize : 1;
-        const unsigned int psfSize = max(psfMap.n_rows, psfMap.n_cols);
-
-        columnStarStampSize = (psfSize + kernelSize + numSubPixelsPerPixel - 1) / numSubPixelsPerPixel + 4;
-        columnStarStamp.zeros(columnStarStampSize * numSubPixelsPerPixel, columnStarStampSize * numSubPixelsPerPixel);
-
-        if (includeConvolution)
-            columnStarConvolver.initialise(columnStarStamp.n_rows, columnStarStamp.n_cols, psfMap);
-    }
+    initialiseColumnStarStamp();
 
     // Position of the stamp on the column star map, and of the star in the stamp
 
@@ -991,6 +979,136 @@ void DetectorWithMappedPSF::addStarToColumnMap(double xFP, double yFP, double ro
                                                                                   (stampRow + 1) * numSubPixelsPerPixel - 1,
                                                                                   (stampColumn + 1) * numSubPixelsPerPixel - 1));
         }
+    }
+}
+
+
+
+
+
+
+
+/**
+ * \brief: Initialise the sub-pixel stamp for the stars along the columns, its convolver, and the sum
+ *         over the rows of the PSF, if this was not done yet for the current PSF. The stamp must hold
+ *         the PSF and the diffusion kernel around the star, plus a margin.
+ */
+
+void DetectorWithMappedPSF::initialiseColumnStarStamp()
+{
+    if (columnStarStampSize != 0)
+        return;
+
+    const unsigned int kernelSize = (includeChargeDiffusion || includeJitterSmoothing) ? diffusionKernelImageSize : 1;
+    const unsigned int psfSize = max(psfMap.n_rows, psfMap.n_cols);
+
+    columnStarStampSize = (psfSize + kernelSize + numSubPixelsPerPixel - 1) / numSubPixelsPerPixel + 4;
+    columnStarStamp.zeros(columnStarStampSize * numSubPixelsPerPixel, columnStarStampSize * numSubPixelsPerPixel);
+
+    if (includeConvolution)
+        columnStarConvolver.initialise(columnStarStamp.n_rows, columnStarStamp.n_cols, psfMap);
+
+    columnStarPsfProfile = arma::sum(psfMap, 0);
+}
+
+
+
+
+
+
+
+/**
+ * \brief: Add a star outside the subfield, along its columns, to the flux per column
+ *         (columnStarFluxPerColumn). The result is the sum over the rows of what addStarToColumnMap()
+ *         would add to the column star map, but it is computed in one dimension: the sum over the rows
+ *         of a 2D convolution is the 1D convolution of the sums over the rows. The diffusion kernel is
+ *         the same as in addStarToColumnMap() (it depends on the sub-pixel position of the star in both
+ *         directions), so it is put on a strip that is just high enough for it, at the same fractional
+ *         sub-pixel row. The convolution uses the same centre of the PSF as the Convolver class.
+ *
+ * \param xFP:    X-coordinate of the star in the focal plane [mm]
+ * \param yFP:    Y-coordinate of the star in the focal plane [mm]
+ * \param row:    Real-valued CCD row of the star [pixels]
+ * \param column: Real-valued column of the star, relative to the first column of the subfield [pixels]
+ * \param flux:   Flux of the star during the exposure [photons]
+ */
+
+void DetectorWithMappedPSF::addStarToColumnProfile(double xFP, double yFP, double row, double column, double flux)
+{
+    initialiseColumnStarStamp();
+
+    // Same position of the star in the stamp as in addStarToColumnMap()
+
+    const int firstRow = (int)floor(row) - (int)columnStarStampSize / 2;
+    const int firstColumn = (int)floor(column) - (int)columnStarStampSize / 2;
+
+    const double subpixRow = (row - firstRow) * numSubPixelsPerPixel;
+    const double subpixColumn = (column - firstColumn) * numSubPixelsPerPixel;
+
+    const int numSubColumns = columnStarStamp.n_cols;
+
+    // Flux of the star per sub-pixel column, before the convolution
+
+    vector<double> starColumns(numSubColumns, 0.0);
+
+    if (includeChargeDiffusion || includeJitterSmoothing)
+    {
+        columnStarKernelStrip.zeros(diffusionKernelImageSize, numSubColumns);
+
+        const double stripRow = (diffusionKernelImageSize - 1) / 2 + (subpixRow - floor(subpixRow));
+        applyDiffusionKernel(columnStarKernelStrip, stripRow, subpixColumn, flux);
+
+        const arma::Row<float> kernelColumns = arma::sum(columnStarKernelStrip, 0);
+
+        for (int j = 0; j < numSubColumns; j++)
+            starColumns[j] = kernelColumns(j);
+    }
+    else
+    {
+        starColumns[(int)floor(subpixColumn)] += flux;
+    }
+
+    // Convolution with the sum over the rows of the PSF: out[j] = sum_m psf[m] * in[j - m + centre]
+
+    vector<double> convolved;
+
+    if (includeConvolution)
+    {
+        convolved.assign(numSubColumns, 0.0);
+
+        const int numPsfColumns = columnStarPsfProfile.n_elem;
+        const int centre = numPsfColumns / 2;
+
+        for (int j = 0; j < numSubColumns; j++)
+        {
+            for (int m = 0; m < numPsfColumns; m++)
+            {
+                const int k = j - m + centre;
+
+                if ((k >= 0) && (k < numSubColumns))
+                    convolved[j] += columnStarPsfProfile(m) * starColumns[k];
+            }
+        }
+    }
+    else
+    {
+        convolved = starColumns;
+    }
+
+    // Rebin to pixels and add to the flux per column
+
+    for (unsigned int stampColumn = 0; stampColumn < columnStarStampSize; stampColumn++)
+    {
+        const int mapColumn = firstColumn + (int)stampColumn;
+
+        if ((mapColumn < 0) || (mapColumn >= (int)columnStarFluxPerColumn.n_elem)) continue;
+
+        double pixelFlux = 0.0;
+
+        for (unsigned int k = 0; k < numSubPixelsPerPixel; k++)
+            pixelFlux += convolved[stampColumn * numSubPixelsPerPixel + k];
+
+        columnStarFluxPerColumn(mapColumn) += pixelFlux;
     }
 }
 

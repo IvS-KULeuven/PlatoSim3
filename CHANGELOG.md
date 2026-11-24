@@ -20,6 +20,10 @@ Checklist to update for a future release:
 
 ### Changed
 
+* With the Short et al. (2013) CTI models, the open-shutter smearing now also contains the stars outside the subfield, in its columns, that are brighter than `CCD/CTI/ColumnStarsMagnitudeLimit`.
+  Only the stars close to the 500 rows below the subfield are simulated pixel by pixel. For the other stars only the flux per column is computed, with the same PSF, which is much faster.
+  Stars in rows that are not exposed, or outside the field of view, are left out.
+
 ### Added
 
 * New parameter `CCD/CTI/ColumnStarsMagnitudeLimit` magnitude limit for the stars outside the subfield, in its columns over the full height of the CCD.

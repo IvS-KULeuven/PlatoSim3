@@ -47,6 +47,8 @@ class DetectorWithMappedPSF : public Detector
         void applyFlatfieldAtSubpixel();
         void applyDiffusionKernel(arma::Mat<float> &map, double row, double column, double flux);
         void addStarToColumnMap(double xFP, double yFP, double row, double column, double flux) override;
+        void addStarToColumnProfile(double xFP, double yFP, double row, double column, double flux) override;
+        void initialiseColumnStarStamp();
         void generateFlatfieldMap();
         void readInFlatfieldMap();
         void generateDiffusionKernel(double kernelWidth);
@@ -63,6 +65,8 @@ class DetectorWithMappedPSF : public Detector
         arma::Mat<float> columnStarStamp;       // Sub-pixel stamp in which a star along the columns is convolved with the PSF
         Convolver columnStarConvolver;          // Convolver for columnStarStamp
         unsigned int columnStarStampSize = 0;   // Size of columnStarStamp, 0 if columnStarConvolver still needs to be initialised [pixels]
+        arma::Row<float> columnStarPsfProfile;  // Sum over the rows of psfMap, to convolve the column profile of a star with
+        arma::Mat<float> columnStarKernelStrip; // Sub-pixel strip, just high enough for the diffusion kernel of one star
         arma::Mat<float> flatfieldSubpixelMap;          // Intra-pixel flatfield map
         arma::Mat<float> unDistortedX;
         arma::Mat<float> unDistortedY;

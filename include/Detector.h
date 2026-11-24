@@ -153,6 +153,8 @@ class Detector: public HDF5Writer
         arma::Row<float> estimateBackgroundPerColumn();
         double getMeanThroughputEfficiency();
         virtual void addStarToColumnMap(double xFP, double yFP, double row, double column, double flux) = 0;
+        virtual void addStarToColumnProfile(double xFP, double yFP, double row, double column, double flux) = 0;
+        arma::Row<float> getColumnStarFluxOutsideSubfield();
         void makeSubGroupForCosmics(string field, int exposureNr);
 
         void applyParticulateContamination();
@@ -335,7 +337,11 @@ class Detector: public HDF5Writer
         double meanDarkSignalPixelMap;           // Mean dark signal in the pixel map for the current exposure [e-]
 
         double columnStarsMagnitudeLimit;        // Only stars brighter than this V magnitude are simulated along the columns
-        arma::Mat<float> columnStarMap;          // Stars along the columns of the subfield: all CCD rows x subfield columns [photons]
+        arma::Mat<float> columnStarMap;          // Stars along the columns of the subfield, close to it: CCD rows from columnStarMapFirstRow x subfield columns [photons]
+        int columnStarMapFirstRow = 0;           // CCD row of the first row of columnStarMap [pixels]
+        int columnStarNearFirstRow = 0;          // Stars from this CCD row ... [pixels]
+        int columnStarNearEndRow = 0;            //   ... up to this CCD row (excluded) are added to columnStarMap, the others to columnStarFluxPerColumn [pixels]
+        arma::Row<float> columnStarFluxPerColumn;   // Flux of the stars along the columns of the subfield that are not in columnStarMap, per subfield column [photons]
         static const int numColumnStarMarginPixels = 20;   // Stars this far beyond the subfield columns can still put flux in them [pixels]
 
         double chargeInjectionLevel;             // Percentage of the full well to be filled by charge injection [0-100]

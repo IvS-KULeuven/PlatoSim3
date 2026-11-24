@@ -36,6 +36,8 @@ class DetectorWithAnalyticGaussianPSF: public Detector
 
         void addGaussianPsfToMap(arma::Mat<float> &map, double row0, double column0, double xFP, double yFP, double flux);
         void addStarToColumnMap(double xFP, double yFP, double row, double column, double flux) override;
+        void addStarToColumnProfile(double xFP, double yFP, double row, double column, double flux) override;
+        pair<arma::mat, int> getGaussianPsfShape(double xFP, double yFP);
 
         virtual void integrateLight(int exposureNr, double startTime, double exposureTime) override;
         virtual void generateFlatfieldMap();

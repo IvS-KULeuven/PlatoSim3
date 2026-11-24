@@ -2451,12 +2451,27 @@ vector<tuple<double, double, double, double, double, double>> Detector::getFocal
 
 
 /**
- * \brief: Empty the map with the stars along the columns of the subfield, before a new exposure.
+ * \brief: Empty the stars along the columns of the subfield, before a new exposure.
+ *
+ * \details The CTI only needs the charge, row by row, of the numCTIBufferRows rows below the subfield,
+ *          and the open-shutter smearing only needs the flux per column. The stars close to the subfield
+ *          (from numColumnStarMarginPixels below the buffer rows up to numColumnStarMarginPixels above the
+ *          subfield) are therefore put on the 2D map columnStarMap, which has another margin of
+ *          numColumnStarMarginPixels on both sides, so that it contains their whole PSF. For the other
+ *          stars, only the flux per column is kept, in columnStarFluxPerColumn.
  */
 
 void Detector::resetColumnStarMap()
 {
-    columnStarMap.zeros(numRows, numColumnsPixelMap);
+    const int margin = numColumnStarMarginPixels;
+    const int firstBufferRow = (subFieldZeroPointRow > numCTIBufferRows) ? subFieldZeroPointRow - numCTIBufferRows : 0;
+
+    columnStarNearFirstRow = firstBufferRow - margin;
+    columnStarNearEndRow = subFieldZeroPointRow + numRowsPixelMap + margin;
+    columnStarMapFirstRow = columnStarNearFirstRow - margin;
+
+    columnStarMap.zeros(columnStarNearEndRow + margin - columnStarMapFirstRow, numColumnsPixelMap);
+    columnStarFluxPerColumn.zeros(numColumnsPixelMap);
 }
 
 
@@ -2466,15 +2481,18 @@ void Detector::resetColumnStarMap()
 
 
 /**
- * \brief: Add a star outside the subfield, along its columns, to the column star map. The PSF is
- *         drawn by the PSF model of the derived class. Stars whose centre is too far from the
- *         columns of the subfield are ignored.
+ * \brief: Add a star outside the subfield, along its columns. The PSF is drawn by the PSF model of the
+ *         derived class: on columnStarMap if the star is close to the subfield, and only as flux per
+ *         column in columnStarFluxPerColumn otherwise (see resetColumnStarMap()). Stars whose centre is
+ *         too far from the columns of the subfield are ignored. So are the stars that are not close to
+ *         the subfield and whose centre is in the rows that are not exposed, or outside the FOV (if the
+ *         relative transmissivity is included), because their light does not reach the CCD.
  *
  * \param xFP:  X-coordinate of the star in the focal plane, in the FP reference frame [mm]
  * \param yFP:  Y-coordinate of the star in the focal plane, in the FP reference frame [mm]
  * \param flux: Flux of the star during the exposure [photons]
  *
- * \return True if the star was added, false if it is too far from the columns of the subfield.
+ * \return True if the star was added, false otherwise.
  */
 
 bool Detector::addColumnStar(double xFP, double yFP, double flux)
@@ -2488,8 +2506,51 @@ bool Detector::addColumnStar(double xFP, double yFP, double flux)
     if ((column < -margin) || (column >= numColumnsPixelMap + margin) || (row < -margin) || (row >= numRows + margin))
         return false;
 
-    addStarToColumnMap(xFP, yFP, row, column, flux);
+    if ((row >= columnStarNearFirstRow) && (row < columnStarNearEndRow))
+    {
+        addStarToColumnMap(xFP, yFP, row - columnStarMapFirstRow, column, flux);
+        return true;
+    }
+
+    if (row < firstRowExposed)
+        return false;
+
+    if (includeRelativeTransmissivity && (camera.getGnomonicRadialDistanceFromOpticalAxis(xFP, yFP) > radiusFOV))
+        return false;
+
+    addStarToColumnProfile(xFP, yFP, row, column, flux);
     return true;
+}
+
+
+
+
+
+
+
+/**
+ * \brief: Return the flux of the stars along the columns of the subfield in the rows outside the
+ *         subfield, per column, for the open-shutter smearing. Of columnStarMap, only the rows that are
+ *         exposed count. The rows of the subfield itself are left out, because their flux is already in
+ *         the pixel map.
+ *
+ * \return Flux per subfield column [photons]
+ */
+
+arma::Row<float> Detector::getColumnStarFluxOutsideSubfield()
+{
+    arma::Row<float> flux = columnStarFluxPerColumn;
+
+    for (unsigned int mapRow = 0; mapRow < columnStarMap.n_rows; mapRow++)
+    {
+        const int ccdRow = columnStarMapFirstRow + (int)mapRow;
+        const bool inSubfield = (ccdRow >= (int)subFieldZeroPointRow) && (ccdRow < (int)(subFieldZeroPointRow + numRowsPixelMap));
+
+        if ((ccdRow >= (int)firstRowExposed) && (ccdRow < (int)numRows) && !inSubfield)
+            flux += columnStarMap.row(mapRow);
+    }
+
+    return flux;
 }
 
 
@@ -2668,7 +2729,9 @@ void Detector::applyShort2013CTImodel(string map)
         const arma::Row<float> darkSignal(numColumnsPixelMap, arma::fill::value(static_cast<float>(meanDarkSignalPixelMap)));
         const unsigned int firstBufferRow = (subFieldZeroPointRow > numCTIBufferRows) ? subFieldZeroPointRow - numCTIBufferRows : 0;
 
-        const bool addColumnStars = includesColumnStars() && (columnStarMap.n_rows == numRows);
+        const bool addColumnStars = includesColumnStars() && (columnStarMap.n_rows > 0)
+                                    && (columnStarMapFirstRow <= (int)firstBufferRow)
+                                    && (columnStarMapFirstRow + (int)columnStarMap.n_rows >= (int)subFieldZeroPointRow);
         const float meanThroughputEfficiency = static_cast<float>(getMeanThroughputEfficiency());
 
         numberOfOccupiedTraps->zeros();
@@ -2680,7 +2743,7 @@ void Detector::applyShort2013CTImodel(string map)
 
             if (addColumnStars && (ccdRow >= firstRowExposed))
             {
-                charge += columnStarMap.row(ccdRow) * meanThroughputEfficiency;
+                charge += columnStarMap.row(ccdRow - columnStarMapFirstRow) * meanThroughputEfficiency;
                 charge = arma::clamp(charge, 0.0f, static_cast<float>(fullWellSaturationLimit));
             }
 
@@ -2895,6 +2958,13 @@ void Detector::applyOpenShutterSmearing(float exposureTime)
         openShutterSmearingOutsideSubField *= meanQE;
 
     openShutterSmearing += openShutterSmearingOutsideSubField;
+
+    // The stars outside the subfield, along its columns (if included)
+
+    if (includesColumnStars() && (columnStarFluxPerColumn.n_elem == numColumnsPixelMap))
+    {
+        openShutterSmearing += getColumnStarFluxOutsideSubfield() * static_cast<float>(getMeanThroughputEfficiency());   // [e-]
+    }
 
     // Fast camera: lower half of the CCD is shielded off -> no contribution to open-shutter smearing here
 

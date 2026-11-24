@@ -538,31 +538,9 @@ tuple<bool, double, double> DetectorWithAnalyticGaussianPSF::addFlux(double xFP,
 
 void DetectorWithAnalyticGaussianPSF::addGaussianPsfToMap(arma::Mat<float> &map, double row0, double column0, double xFP, double yFP, double flux)
 {
-    // Depending on the angular distance from the optical axis, the PSF increases in size.
-    // Determine the standard deviations in both directions.
-    // Recall:
-    //    sigma00:    Stdev of Gaussian PSF in x- and y-direction at the optical axis      [pix]
-    //    sigmaX18:   Stdev of Gaussian PSF in x-direction at 18 deg from the optical axis [pix]
-    //    sigmaY18;   Stdev of Gaussian PSF in y-direction at 18 deg from the optical axis [pix]
-
-    const double theta = rad2deg(camera.getGnomonicRadialDistanceFromOpticalAxis(xFP, yFP));
-    const double sigmaX = sigma00 + theta/18.0  * (sigmaX18 - sigma00);
-    const double sigmaY = sigma00 + theta/18.0  * (sigmaY18 - sigma00);
-
-    // Construct the covariance matrix of the rotated non-spherial gaussian
-    // Note: sigmaX corresponds to the column direction, sigmaY to the row direction.
-
-    const double angle = Constants::PI - atan2(yFP, xFP);
-
-    arma::mat R(2,2);
-    R << cos(angle) << -sin(angle) << arma::endr
-      << sin(angle) <<  cos(angle) << arma::endr;
-
-    arma::mat invS(2,2);
-    invS << 1./(sigmaY*sigmaY) <<         0          << arma::endr
-         <<          0         << 1./(sigmaX*sigmaX) << arma::endr;
-
-    const arma::mat invCov = R * invS * R.t();                      // Inverse of the covariance matrix
+    arma::mat invCov;                                               // Inverse of the covariance matrix
+    int range;
+    tie(invCov, range) = getGaussianPsfShape(xFP, yFP);
 
     // Compute the prefactor of the 2D gaussian, that contains the determinant of the cov matrix
 
@@ -574,8 +552,6 @@ void DetectorWithAnalyticGaussianPSF::addGaussianPsfToMap(arma::Mat<float> &map,
 
     const arma::colvec mu = {row0, column0};
     double sum = 0.0;
-
-    int range = max(6*floor(sigmaX), 6*floor(sigmaY));
 
     for (int row = int(floor(row0))-range; row < int(floor(row0))+range+1; row++)
     {
@@ -601,6 +577,113 @@ void DetectorWithAnalyticGaussianPSF::addGaussianPsfToMap(arma::Mat<float> &map,
             arma::colvec x = {double(row), double(col)};
             map(row, col) += preFactor * arma::exp(-0.5 * (x - mu).t() * invCov * (x-mu)).at(0,0);
         }
+    }
+}
+
+
+
+
+
+
+
+/**
+ * \brief: Return the shape of the Gaussian PSF at the given position in the focal plane.
+ *
+ * \param xFP: X-coordinate of the star in the focal plane [mm]
+ * \param yFP: Y-coordinate of the star in the focal plane [mm]
+ *
+ * \return (invCov, range): inverse of the covariance matrix (row, column) [1 / pixels^2], and the
+ *         half-width of the square of pixels over which the PSF is computed [pixels]
+ */
+
+pair<arma::mat, int> DetectorWithAnalyticGaussianPSF::getGaussianPsfShape(double xFP, double yFP)
+{
+    // Depending on the angular distance from the optical axis, the PSF increases in size.
+    // Determine the standard deviations in both directions.
+    // Recall:
+    //    sigma00:    Stdev of Gaussian PSF in x- and y-direction at the optical axis      [pix]
+    //    sigmaX18:   Stdev of Gaussian PSF in x-direction at 18 deg from the optical axis [pix]
+    //    sigmaY18;   Stdev of Gaussian PSF in y-direction at 18 deg from the optical axis [pix]
+
+    const double theta = rad2deg(camera.getGnomonicRadialDistanceFromOpticalAxis(xFP, yFP));
+    const double sigmaX = sigma00 + theta/18.0  * (sigmaX18 - sigma00);
+    const double sigmaY = sigma00 + theta/18.0  * (sigmaY18 - sigma00);
+
+    // Construct the covariance matrix of the rotated non-spherial gaussian
+    // Note: sigmaX corresponds to the column direction, sigmaY to the row direction.
+
+    const double angle = Constants::PI - atan2(yFP, xFP);
+
+    arma::mat R(2,2);
+    R << cos(angle) << -sin(angle) << arma::endr
+      << sin(angle) <<  cos(angle) << arma::endr;
+
+    arma::mat invS(2,2);
+    invS << 1./(sigmaY*sigmaY) <<         0          << arma::endr
+         <<          0         << 1./(sigmaX*sigmaX) << arma::endr;
+
+    const arma::mat invCov = R * invS * R.t();
+
+    const int range = max(6*floor(sigmaX), 6*floor(sigmaY));
+
+    return make_pair(invCov, range);
+}
+
+
+
+
+
+
+
+/**
+ * \brief: Add the Gaussian PSF of a star along the columns of the subfield to the flux per column
+ *         (columnStarFluxPerColumn). This is the sum over the rows of what addGaussianPsfToMap() would
+ *         add to a map, with the same pixel values and normalisation, but without the matrix
+ *         operations per pixel.
+ *
+ * \param xFP:    X-coordinate of the star in the focal plane [mm]
+ * \param yFP:    Y-coordinate of the star in the focal plane [mm]
+ * \param row:    Real-valued CCD row of the star [pixels]
+ * \param column: Real-valued column of the star, relative to the first column of the subfield [pixels]
+ * \param flux:   Flux of the star during the exposure [photons]
+ */
+
+void DetectorWithAnalyticGaussianPSF::addStarToColumnProfile(double xFP, double yFP, double row, double column, double flux)
+{
+    arma::mat invCov;
+    int range;
+    tie(invCov, range) = getGaussianPsfShape(xFP, yFP);
+
+    const double a = invCov(0, 0);
+    const double b = invCov(0, 1) + invCov(1, 0);
+    const double c = invCov(1, 1);
+
+    const int firstRow = int(floor(row)) - range;
+    const int firstColumn = int(floor(column)) - range;
+    const int size = 2 * range + 1;
+
+    vector<double> columnSum(size, 0.0);
+    double sum = 0.0;
+
+    for (int i = 0; i < size; i++)
+    {
+        const double dr = (firstRow + i) - row;
+
+        for (int j = 0; j < size; j++)
+        {
+            const double dc = (firstColumn + j) - column;
+            const double value = exp(-0.5 * (a * dr * dr + b * dr * dc + c * dc * dc));
+            columnSum[j] += value;
+            sum += value;
+        }
+    }
+
+    for (int j = 0; j < size; j++)
+    {
+        const int mapColumn = firstColumn + j;
+
+        if ((mapColumn >= 0) && (mapColumn < (int)columnStarFluxPerColumn.n_elem))
+            columnStarFluxPerColumn(mapColumn) += flux * columnSum[j] / sum;
     }
 }
 
