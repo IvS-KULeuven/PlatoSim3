@@ -10,7 +10,23 @@ Checklist to update for a future release:
 * Update the "version" in the file `pyproject.toml`
 * Check all for a successful run of all Jupyter notebooks in `docs/tutorials` (runs with `uv sync` package management)
 
-## Upcoming release: 3.8.0
+## Upcoming release: 3.8.1
+
+### Fixed
+
+* Short et al. (2013) CTI model, issue #989: the trap occupancy at the start of a subfield now follows from simulating 500 rows below it.
+  These rows contain the background and the stars along the columns of the subfield (see below).
+* The cosmic rays now follow `RandomSeeds/CosmicSeed`. The seed was not read, so the cosmic rays did not depend on it, and changed with every change to the code.
+
+### Changed
+
+* The open-shutter smearing now also contains the bright stars outside the subfield, in its columns, that are brighter than `SubField/ColumnStarsMagnitudeLimit.
+
+
+### Added
+
+* New parameter `SubField/ColumnStarsMagnitudeLimit` (default 16): magnitude limit for the stars outside the subfield, in its columns over the full height of the CCD, used for the open-shutter smearing and the Short et al. (2013) CTI models.
+## 30/10/2026: 3.8.0
 
 **Before you update a source installation:** this release changes the bundled C++ libraries (HDF5 2.2.0, Armadillo 15.6.0, newer yaml-cpp and Faddeeva, and zlib as a new library). After updating, remove the old libraries and run the full installation again: `rm -rf dependencies/Installs` followed by `./install.sh` (needs CMake 3.26 or more recent). Install the Python packages again with uv, since Poetry is no longer supported.
 
@@ -226,7 +242,7 @@ Checklist to update for a future release:
 * Updates to the online documentation (mainly typos).
 * PLATOnium/varsim: Stellar spot modulations has a factor of two too low amplitude. Now the model is much more representative for the expected level of stellar activity.
 * PLATOnium/varsim: This method has changed its structure slightly regarding the parsed arguments.
-* The verbosity level for all methods in the PLATOnium toolkit (picsim, varsim, payload, and platonium) has changed to be inline with the usage of PlatoSim (except for the `verbose=0` which is designed for running simulations on a computing cluster). 
+* The verbosity level for all methods in the PLATOnium toolkit (picsim, varsim, payload, and platonium) has changed to be inline with the usage of PlatoSim (except for the `verbose=0` which is designed for running simulations on a computing cluster).
 
 ### Added
 
@@ -241,9 +257,9 @@ Checklist to update for a future release:
 * PLATOnium/platonium: can now simulate full-frame CCD images.
 * PLATOnium/platonium: can now simulate the F-CAMs.
 * PLATOnium/platonium: the user can now specify if they want to use random and instrumental systematics "as required" or "as expected" ("as build" will be availble closer to launch).
-* PLATOnium/platonium: can now perform a simple detrending and stitching to the on-board light curves produced by PlatoSim. 
+* PLATOnium/platonium: can now perform a simple detrending and stitching to the on-board light curves produced by PlatoSim.
 * Added complete documentation on how to use Poetry to install PLATOnium (for users and developers).
-* Added ocumentation about how to setup PLATOnium to run the L1 proto-pipeline. 
+* Added ocumentation about how to setup PLATOnium to run the L1 proto-pipeline.
 
 
 <!-- 3.6.0 -->
@@ -321,7 +337,7 @@ Checklist to update for a future release:
 ### Fixed
 
 * Fixed bug where incorrect gain was applied to the right CCD.
-* Fixed a bug when applying open shutter smearing when we include relative transmissivity. 
+* Fixed a bug when applying open shutter smearing when we include relative transmissivity.
 * Fixed issue with CTI (Short2013 model) where we did not use the correct dwell time.
 
 ### Changed
@@ -371,14 +387,14 @@ Checklist to update for a future release:
 
 * Corrected bug in validationtest for Cosmics.
 * Corrected bug in python mapped distortion functions in python/platosim/referenceFrames.py. (GitHub #659)
-* Fixed bug in Camera.cpp. Previously distortion for mapped PSF would only be taken into account when 
-includeFieldDistoritions was set to True. Mapped distoriton should always happen, independent of that value. 
+* Fixed bug in Camera.cpp. Previously distortion for mapped PSF would only be taken into account when
+includeFieldDistoritions was set to True. Mapped distoriton should always happen, independent of that value.
 
 ### Changed
 
 * Changed field distortion for mapped PSF to deal with more general mapped psf files.
 * Changed field distoriton for analytic PSF from Radial model to Wang model. (GitHub #652)
-* Changed 'distortedToUndistortedFocalPlaneCoordinates' and 'undistortedToDistortedFocalPlaneCoordinates' in 
+* Changed 'distortedToUndistortedFocalPlaneCoordinates' and 'undistortedToDistortedFocalPlaneCoordinates' in
 python/platosim/referenceFrames.py
 * Orientation angle received via network is propagated correctly to the detector (Github #660)
 * Changed deprecated 'append' method for pandas dataframe in MappedGaussianPSF validation test into 'concat' method
@@ -407,8 +423,8 @@ python/platosim/referenceFrames.py
 
 ### Changed
 
-* The dependencies python install files now check that the `Installs` directory exists and creates this directory if it doesn't. 
-* Made the log files for `Camera::makeStarCatalogSelection` clearer. 
+* The dependencies python install files now check that the `Installs` directory exists and creates this directory if it doesn't.
+* Made the log files for `Camera::makeStarCatalogSelection` clearer.
 * Changed the python functions in `referenceFrames.py`, `plot.py` and `simulation.py` to deal with mapped distortion.
 * Mapped distortion now uses a continuous approximation insead of the previous (crude) method of one-to-one fitting of closed point.
 * Changed cosmics intensity from uniform to skew-normal. (GitHub #638)
@@ -416,7 +432,7 @@ python/platosim/referenceFrames.py
 
 ### Added
 
-* Added an option to individually switch on/off extended or pointlike ghosts. 
+* Added an option to individually switch on/off extended or pointlike ghosts.
 * Added `getCosmicsInfo()` method to extract the entry position, entry angle and the trail length of all cosmics
 
 
@@ -435,15 +451,15 @@ python/platosim/referenceFrames.py
 
 * Update `showSim.py` to include biasMapsRight and biasMapsLeft
 * New analytic PSF model and set of parameters for N6000K
-* Include more accurate PSF files for mapped PSF model. The new files can be downloaded from the `Prerequisites` section of the PlatoSim website. 
-* Updated mail.cpp to allow a new log level: 0: only shows errors and no warning. 
+* Include more accurate PSF files for mapped PSF model. The new files can be downloaded from the `Prerequisites` section of the PlatoSim website.
+* Updated mail.cpp to allow a new log level: 0: only shows errors and no warning.
 * Update `Simulation::writeInputParametersToHDF5` function.
-* Implemented a new mapped distortion method for the mapped PSF model. The distortion table is included in psf files. 
-* Updated website 
+* Implemented a new mapped distortion method for the mapped PSF model. The distortion table is included in psf files.
+* Updated website
 
 ### Added
 
-* Added a more accurate aberration model. Instead of assuming a circular orbit with constant speed around the sun, we can now include the path of the spacecraft in an orbit file to simulate any time-dependent velocity. An accurate orbit file is included in the `inputfiles` directory. 
+* Added a more accurate aberration model. Instead of assuming a circular orbit with constant speed around the sun, we can now include the path of the spacecraft in an orbit file to simulate any time-dependent velocity. An accurate orbit file is included in the `inputfiles` directory.
 
 
 <!-- 3.4.1 -->
@@ -501,14 +517,14 @@ python/platosim/referenceFrames.py
 ### Changed
 
 * Provide package acces to python scipts (GitHub feature request #548)
-* Updated HDF5 library from v10.2 to v12.0 	
+* Updated HDF5 library from v10.2 to v12.0
 * Replaced natural & mechanical vignetting with overall relative transmissivity (GitHub issue #478)
 * Read BFE coefficients from file instead of calculating them (GitHub issue #434)
 * CCD ID new standard (GitHub issue #416)
 * Implemented time-dependent CTI (GitHub issue #476)
 * Unique ID needed in ClosedLoopUtility and Log-File (GitHub issue #488)
 * Implemented time-dependent CTI (GitHub issue #476)
-	
+
 ### Added
 
 * Validation & verification notebooks
@@ -527,7 +543,7 @@ python/platosim/referenceFrames.py
 * Add linear irradiance ratio decrease of point-like ghosts (GitHub issue #526)
 * Added getPointLikeGhostCoordinates() and getExtendedGhostCoordinates() methods to SimFile class
 
-	
+
 <!-- 3.3.7 -->
 <!-- ***** -->
 
@@ -686,7 +702,7 @@ python/platosim/referenceFrames.py
 * Added scripts for comparison with PIS
 * Time dependency for:
 	- PSF sigma (analytic non-Gaussian PSF)
-	- focal length 
+	- focal length
 	- throughput maps
 
 ### Fixed
@@ -800,7 +816,7 @@ python/platosim/referenceFrames.py
 	- Differential & absolute
 	- Baseline: circular Earth orbit
 * Ageing: linear degradation implemented for the transmission efficiency
-* New dependency: Faddeeva (used by the analytical PSFs) 
+* New dependency: Faddeeva (used by the analytical PSFs)
 * Visualisation of the output with <code>h5ls</code> and <code>h5get</code> (Python functions)
 * Easy selection of requested camera group from the input file, use <code>Telescope/GroupID</code> = [1,2,3,4,Fast,Custom]
 * Easy selection of requested CCD position, use <code>CCD/Position</code> = [1,2,3,4,Custom]

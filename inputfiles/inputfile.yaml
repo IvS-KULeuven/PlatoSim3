@@ -285,6 +285,7 @@ SubField:
     NumBiasPrescanRows:              25              # Nr of rows of the prescan strip to determine the bias [pixels]
     NumBiasPrescanColumns:           15              # Nr of columns of the prescan strip to determine the bias [pixels]
     NumSmearingOverscanRows:         30              # Nr of rows of the overscan strip to determine the smearing [pixels]
+    ColumnStarsMagnitudeLimit:       16              # Stars outside the subfield, in its columns, are simulated for the smearing and the CTI if V <= this limit [mag]
     SubPixels:                       8               # (Sqrt of) nr of subpixels per CCD pixel. Should be 2^n <= 128.
 
 

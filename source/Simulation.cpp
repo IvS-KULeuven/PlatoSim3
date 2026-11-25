@@ -963,6 +963,7 @@ void Simulation::writeInputParametersToHDF5(ConfigurationParameters &configParam
     addInteger("NumBiasPrescanRows");
     addInteger("NumBiasPrescanColumns");
     addInteger("NumSmearingOverscanRows");
+    addDouble("ColumnStarsMagnitudeLimit");
     addInteger("SubPixels");
 
     subGroup = "Photometry";

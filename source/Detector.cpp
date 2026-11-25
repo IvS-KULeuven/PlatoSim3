@@ -377,6 +377,9 @@ void Detector::updateParameters(double time)
     numColumnsBiasMap       = configParam.getInteger("SubField/NumBiasPrescanColumns");
     numRowsSmearingMap      = configParam.getInteger("SubField/NumSmearingOverscanRows");
 
+    openShutterSmearingPerColumn.zeros(numColumnsPixelMap);
+    meanDarkSignalPixelMap = 0.0;
+
     Log.debug("Detector: Subfield zero point (row, col) = (" + to_string(subFieldZeroPointRow) + ", " + to_string(subFieldZeroPointColumn) + ")");
     Log.debug("Detector: Subfield center point (row, col) = (" + to_string(subFieldZeroPointRow + numRowsPixelMap/2)
                                                                + ", " + to_string(subFieldZeroPointColumn + numColumnsPixelMap/2) + ")");
@@ -648,6 +651,10 @@ void Detector::updateParameters(double time)
         throw ConfigurationException("Detector: Unkown CTI model specification in configuration file");
     }
 
+    // Stars outside the subfield, along its columns
+
+    columnStarsMagnitudeLimit = configParam.getDouble("SubField/ColumnStarsMagnitudeLimit");
+
      // We only need to read in the bad pixel parameter if bad pixels should be included
 
      if (includeBadPixelMap)
@@ -675,6 +682,7 @@ void Detector::updateParameters(double time)
     photonNoiseSeed     = configParam.getLong("RandomSeeds/PhotonNoiseSeed");
     badPixelSeed        = configParam.getLong("RandomSeeds/BadPixelSeed");
     darkSignalSeed      = configParam.getLong("RandomSeeds/DarkSignalSeed");
+    cosmicSeed          = configParam.getLong("RandomSeeds/CosmicSeed");
 
     // Get the sequential number of the very first exposure
     beginExposureNr     = configParam.getInteger("ObservingParameters/BeginExposureNr");
@@ -904,20 +912,6 @@ double Detector::takeExposure(int exposureNr, double startTime, double exposureT
 
     integrateLight(exposureNr, startTime, exposureTime);
 
-
-    // If this is the first exposure, we should initialize the number of occupied traps.
-    // This can only be done after the detector has been exposed to the skybackground.
-    // => Check if CTI is included && We use the Short2013 model
-    //
-    // JDR[08-01-2026]: I commented out the following if-statement because it causes the first exposure to show a different CTI trail 
-    //                  compared to the other exposures. Cf Issue #989. Inside the applyShort2013CTI() function, I implemented the traps
-    //                  to be all occupied at the beginning of the readout.
-
-    // if (exposureNr == beginExposureNr) {
-    //     if (includeCTIeffects && (CTImodel == "Short2013" || CTImodel == "Short2013FromFile")) {
-    //         setInitialNumberOfOccupiedTraps(numberOfOccupiedTrapsPixelMap);
-    //     }
-    // }
 
     // Include noise effects like readout noise, photon noise, full well saturation, etc.
     // Note: readOut() needs the exposure time to compute the open shutter smearing.
@@ -1323,6 +1317,7 @@ void Detector::addDarkSignal(float exposureTime)
     const double darkCurrentOverDeltaTemp = darkCurrentStability * (getTemperature() - nominalOperatingTemperature);
     double darkSignalRef = (darkCurrent + darkCurrentOverDeltaTemp) * (exposureTime + readoutTimeBeforeNextExposure + readoutTimeDuringNextExposure);
     darkSignalDistribution = normal_distribution<double>(darkSignalRef, darkSignalRef * dsnu / 100.0);
+    meanDarkSignalPixelMap = darkSignalRef;
 
 
     for(unsigned int row = 0; row < numRowsPixelMap; row++)
@@ -2187,50 +2182,6 @@ void Detector::applyCTI()
 
 
 
-void Detector::setInitialNumberOfOccupiedTraps(arma::Mat<float> &numberOfOccupiedTraps)
-{
-    // Set general parameters
-
-    const double maxVolumePerPixel = pixelSize * pixelSize * 1.e-18  / 2.0;                                  // Vg [m^3]
-    const double effectiveElectronMass = 0.5 * Constants::FREEELECTRONMASS;                                  // me [kg]
-    const double thermalVelocity = sqrt(3.0 * Constants::KBOLTZMANN * temperature / effectiveElectronMass);  // vt [m/s]
-    const double dwellTime = ((numColumns / 2) + numColumnsBiasMap) * serialTransferTime;                    // t  [s]
-
-    // Initialise the trapspecies
-
-    arma::Row<float> alpha(numTrapSpecies, arma::fill::zeros);
-    for (int k = 0; k < numTrapSpecies; k++)
-    {
-        alpha(k) = dwellTime * trapCaptureCrossSection[k] * thermalVelocity * pow(fullWellSaturationLimit, beta) / (2.0 * maxVolumePerPixel);
-    }
-
-    arma::Row<float> skyBackground;
-    skyBackground = pixelMap.row(0);
-
-    // Set initial number of occupied traps for pixelMap
-
-    for (int k = 0; k < numTrapSpecies; k++)
-    {
-        arma::Mat<float> currentTrapDensityMap =
-	    (meanTrapDensityBOL[k] + (meanTrapDensityEOL[k] - meanTrapDensityBOL[k]) * beginExposureNr / finalExposureNr) * radiationMap;
-
-        arma::Row<float> gamma(numColumnsPixelMap, arma::fill::zeros);
-        gamma = 2 * currentTrapDensityMap.row(0) *
-               (subFieldZeroPointRow + 1) / pow(fullWellSaturationLimit, beta) / (1 + beta); // +1 as row=0 also has to be transferred once
-        arma::Row<float> A = (1 - arma::exp(-alpha(k) * arma::pow(skyBackground / 2, 1 - beta))) /
-                             (gamma % arma::pow(skyBackground, beta - 1) + 1);
-        arma::Row<float> B = gamma % arma::pow(skyBackground, beta);
-        double C = (1 - exp(-dwellTime / releaseTime[k]));
-        numberOfOccupiedTraps.row(k) = (A % B) / (A + C);
-    }
-}
-
-
-
-
-
-
-
 /**
  * \brief Apply charge injection to mitigate the CTI effect. Only the PixelMap is affected.
  *
@@ -2351,6 +2302,366 @@ void Detector::applySimpleCTImodel()
 
 
 /**
+ * \brief: Estimate the charge in a CCD pixel without any source, for the current exposure.
+ *         The rows outside the subfield are not simulated, but this charge is needed
+ *         to know how they fill the traps during the readout.
+ *
+ * \return Background for each column of the subfield: sky, straylight, dark signal and
+ *         open-shutter smearing [e-].
+ */
+
+arma::Row<float> Detector::estimateBackgroundPerColumn()
+{
+    double skyBackground = camera.getTotalSkyBackground() * getMeanThroughputEfficiency();   // [e-]
+
+    if (includeStraylight && !straylightValues.empty())
+        skyBackground += straylightValues.back();
+
+    arma::Row<float> background = openShutterSmearingPerColumn;
+    background.elem(arma::find_nonfinite(background)).zeros();
+    background += static_cast<float>(skyBackground + meanDarkSignalPixelMap);
+
+    return background;
+}
+
+
+
+
+
+
+
+/**
+ * \brief: Return the mean throughput efficiency, used to convert photons to electrons in the parts of
+ *         the CCD that are not simulated pixel by pixel. It combines the expected values of the relative
+ *         transmissivity and the polarisation, the particulate and molecular contamination, and the mean
+ *         quantum efficiency (incl. its mean angle dependency), for those effects that are switched on. These
+ *         are the same factors as in generateThroughputMap().
+ *
+ * \return Mean throughput efficiency [e- / photon]
+ */
+
+double Detector::getMeanThroughputEfficiency()
+{
+    double efficiency = 1.0;
+
+    if (includeRelativeTransmissivity)
+        efficiency *= expectedValueRelativeTransmissivity;
+
+    if (includePolarization)
+        efficiency *= expectedValuePolarization;
+
+    if (includeParticulateContamination)
+        efficiency *= particulateContaminationEfficiency;
+
+    if (includeMolecularContamination)
+        efficiency *= molecularContaminationEfficiency;
+
+    if (includeQuantumEfficiency)
+        efficiency *= meanQE * meanAngleDependencyQE;
+
+    return efficiency;
+}
+
+
+
+
+
+
+
+/**
+ * \brief: Return whether the stars outside the subfield, along its columns, need to be simulated: for
+ *         the CTI (includesColumnStarsForCTI()), for the open-shutter smearing
+ *         (includesColumnStarsForSmearing()), or both.
+ *
+ * \return True if the stars along the columns are needed, false otherwise.
+ */
+
+bool Detector::includesColumnStars()
+{
+    return includesColumnStarsForCTI() || includesColumnStarsForSmearing();
+}
+
+
+
+
+
+
+
+/**
+ * \brief: Return whether the stars outside the subfield, along its columns, are used for the CTI: they
+ *         set the state of the traps in the Short et al. (2013) CTI model.
+ *
+ * \return True if the stars along the columns are used for the CTI, false otherwise.
+ */
+
+bool Detector::includesColumnStarsForCTI()
+{
+    return includeCTIeffects && (CTImodel == "Short2013" || CTImodel == "Short2013FromFile");
+}
+
+
+
+
+
+
+
+/**
+ * \brief: Return whether the stars outside the subfield, along its columns, are used for the open-shutter
+ *         smearing: during the readout, their light falls on the columns of the subfield.
+ *
+ * \return True if the stars along the columns are used for the open-shutter smearing, false otherwise.
+ */
+
+bool Detector::includesColumnStarsForSmearing()
+{
+    return includeOpenShutterSmearing;
+}
+
+
+
+
+
+
+
+/**
+ * \brief: Return the magnitude limit for the stars along the columns of the subfield.
+ *
+ * \return Only stars with a V magnitude <= this limit are simulated along the columns.
+ */
+
+double Detector::getColumnStarsMagnitudeLimit()
+{
+    return columnStarsMagnitudeLimit;
+}
+
+
+
+
+
+
+
+/**
+ * \brief: Return the focal-plane coordinates of the strip on the CCD that contains the columns of the
+ *         subfield, over all CCD rows, with a margin of numColumnStarMarginPixels on each side.
+ *         The strip is long and narrow, so it is cut along the rows into segments that are not longer
+ *         than the strip is wide. A circle around each segment then covers little else than the segment.
+ *
+ * \return For each segment (xCentre, yCentre, x00, y00, x11, y11): centre, lower left and upper right
+ *         corner of the segment [mm]
+ */
+
+vector<tuple<double, double, double, double, double, double>> Detector::getFocalPlaneCoordinatesOfColumnStripSegments()
+{
+    const double firstColumn = subFieldZeroPointColumn - numColumnStarMarginPixels;
+    const double endColumn = subFieldZeroPointColumn + numColumnsPixelMap + numColumnStarMarginPixels;
+    const double firstRow = -numColumnStarMarginPixels;
+    const double endRow = numRows + numColumnStarMarginPixels;
+
+    const double stripWidth = endColumn - firstColumn;                                         // [pixels]
+    const double stripLength = endRow - firstRow;                                              // [pixels]
+    const unsigned int numSegments = max(1u, static_cast<unsigned int>(ceil(stripLength / stripWidth)));
+    const double segmentLength = stripLength / numSegments;                                    // [pixels]
+
+    vector<tuple<double, double, double, double, double, double>> segments;
+    segments.reserve(numSegments);
+
+    for (unsigned int segment = 0; segment < numSegments; segment++)
+    {
+        const double segmentFirstRow = firstRow + segment * segmentLength;
+        const double segmentEndRow = segmentFirstRow + segmentLength;
+
+        double xCentre, yCentre, x00, y00, x11, y11;
+        tie(xCentre, yCentre) = pixelToFocalPlaneCoordinates((segmentFirstRow + segmentEndRow) / 2.0, (firstColumn + endColumn) / 2.0);
+        tie(x00, y00) = pixelToFocalPlaneCoordinates(segmentFirstRow, firstColumn);
+        tie(x11, y11) = pixelToFocalPlaneCoordinates(segmentEndRow, endColumn);
+
+        segments.push_back(make_tuple(xCentre, yCentre, x00, y00, x11, y11));
+    }
+
+    return segments;
+}
+
+
+
+
+
+
+
+/**
+ * \brief: Empty the stars along the columns of the subfield, before a new exposure.
+ *
+ * \details The CTI only needs the charge, row by row, of the numCTIBufferRows rows below the subfield,
+ *          and the open-shutter smearing only needs the flux per column outside the subfield. The stars
+ *          close to the subfield (from numColumnStarMarginPixels below the buffer rows, or below the
+ *          subfield if the CTI doesn't need them, up to numColumnStarMarginPixels above the subfield) are
+ *          therefore put on the 2D map columnStarMap, which has another margin of numColumnStarMarginPixels
+ *          on both sides, so that it contains their whole PSF and the part of it in the subfield can be left
+ *          out of the smearing. For the other stars, only the flux per column is kept, in
+ *          columnStarFluxPerColumn.
+ */
+
+void Detector::resetColumnStarMap()
+{
+    const int margin = numColumnStarMarginPixels;
+    const int firstBufferRow = (subFieldZeroPointRow > numCTIBufferRows) ? subFieldZeroPointRow - numCTIBufferRows : 0;
+    const int firstRowOnMap = includesColumnStarsForCTI() ? firstBufferRow : (int)subFieldZeroPointRow;
+
+    columnStarNearFirstRow = firstRowOnMap - margin;
+    columnStarNearEndRow = subFieldZeroPointRow + numRowsPixelMap + margin;
+    columnStarMapFirstRow = columnStarNearFirstRow - margin;
+
+    columnStarMap.zeros(columnStarNearEndRow + margin - columnStarMapFirstRow, numColumnsPixelMap);
+    columnStarFluxPerColumn.zeros(numColumnsPixelMap);
+}
+
+
+
+
+
+
+
+/**
+ * \brief: Add a star outside the subfield, along its columns. The PSF is drawn by the PSF model of the
+ *         derived class: on columnStarMap if the star is close to the subfield, and only as flux per
+ *         column in columnStarFluxPerColumn otherwise (see resetColumnStarMap()). Stars whose centre is
+ *         too far from the columns of the subfield are ignored. So are the stars that are not close to
+ *         the subfield and whose centre is in the rows that are not exposed, or outside the FOV (if the
+ *         relative transmissivity is included), because their light does not reach the CCD.
+ *
+ * \param xFP:  X-coordinate of the star in the focal plane, in the FP reference frame [mm]
+ * \param yFP:  Y-coordinate of the star in the focal plane, in the FP reference frame [mm]
+ * \param flux: Flux of the star during the exposure [photons]
+ *
+ * \return True if the star was added, false otherwise.
+ */
+
+bool Detector::addColumnStar(double xFP, double yFP, double flux)
+{
+    double row, column;
+    tie(row, column) = focalPlaneToPixelCoordinates(xFP, yFP);        // CCD pixel coordinates
+    column -= subFieldZeroPointColumn;
+
+    const double margin = numColumnStarMarginPixels;
+
+    if ((column < -margin) || (column >= numColumnsPixelMap + margin) || (row < -margin) || (row >= numRows + margin))
+        return false;
+
+    if ((row >= columnStarNearFirstRow) && (row < columnStarNearEndRow))
+    {
+        addStarToColumnMap(xFP, yFP, row - columnStarMapFirstRow, column, flux);
+        return true;
+    }
+
+    // The flux per column is only used for the open-shutter smearing
+
+    if (!includesColumnStarsForSmearing())
+        return false;
+
+    if (row < firstRowExposed)
+        return false;
+
+    if (includeRelativeTransmissivity && (camera.getGnomonicRadialDistanceFromOpticalAxis(xFP, yFP) > radiusFOV))
+        return false;
+
+    addStarToColumnProfile(xFP, yFP, row, column, flux);
+    return true;
+}
+
+
+
+
+
+
+
+/**
+ * \brief: Return the flux of the stars along the columns of the subfield in the rows outside the
+ *         subfield, per column, for the open-shutter smearing. Of columnStarMap, only the rows that are
+ *         exposed count. The rows of the subfield itself are left out, because their flux is already in
+ *         the pixel map.
+ *
+ * \return Flux per subfield column [photons]
+ */
+
+arma::Row<float> Detector::getColumnStarFluxOutsideSubfield()
+{
+    arma::Row<float> flux = columnStarFluxPerColumn;
+
+    for (unsigned int mapRow = 0; mapRow < columnStarMap.n_rows; mapRow++)
+    {
+        const int ccdRow = columnStarMapFirstRow + (int)mapRow;
+        const bool inSubfield = (ccdRow >= (int)subFieldZeroPointRow) && (ccdRow < (int)(subFieldZeroPointRow + numRowsPixelMap));
+
+        if ((ccdRow >= (int)firstRowExposed) && (ccdRow < (int)numRows) && !inSubfield)
+            flux += columnStarMap.row(mapRow);
+    }
+
+    return flux;
+}
+
+
+
+
+
+
+
+/**
+ * \brief: Transfer one row of charge packets along its columns to the readout register,
+ *         using Eqs. (22)-(25) of Short et al. (2013).
+ *
+ * \note Capture and release follow the order of the CDM03 code: the captured electrons are first
+ *       added to the occupied traps, and the release is computed from the updated number. The
+ *       trap species are treated one after the other. The trap parameters of Prod'homme et al. (2016)
+ *       were fitted with this model and are only valid for it.
+ *
+ * \param charge:           Charge packets of the row, updated by this function [e-]
+ * \param crossedRadiation: Summed normalized radiation level of all pixels crossed by the row
+ * \param trapDensity:      Mean trap density for each species [traps/pixel]
+ * \param alpha:            Capture parameter of Eq. (23) for each species
+ * \param releaseFraction:  Fraction of the occupied traps that release during one line, for each species
+ * \param occupiedTraps:    Occupied traps per species (rows) and column (columns), updated by this function
+ */
+
+void Detector::transferRowShort2013(arma::Row<float> &charge, const arma::Row<double> &crossedRadiation,
+                                    const vector<double> &trapDensity, const vector<double> &alpha,
+                                    const vector<double> &releaseFraction, arma::Mat<float> &occupiedTraps)
+{
+    const double fullWellToBeta = pow(fullWellSaturationLimit, beta);
+
+    for (unsigned int species = 0; species < numTrapSpecies; species++)
+    {
+        // Eq. (23) of Short et al. (2013)
+
+        const arma::Row<double> gammaAsDouble = 2.0 * trapDensity[species] * crossedRadiation / fullWellToBeta / (1.0 + beta);
+        const arma::Row<float> gamma = arma::conv_to<arma::Row<float>>::from(gammaAsDouble);
+
+        // Eq. (22) of Short et al. (2013). Note that Armadillo uses % for elementwise multiplication.
+
+        arma::Row<float> capturedElectrons =
+            (gamma % arma::pow(charge, beta) - occupiedTraps.row(species))
+            / (gamma % arma::pow(charge, beta - 1) + 1)
+            % (1 - arma::exp(static_cast<float>(-alpha[species]) * arma::pow(charge, 1 - beta)));
+
+        // Captured electron numbers can't be negative, and empty pixels don't lose charge.
+
+        capturedElectrons.elem(arma::find(capturedElectrons < 0.0f)).zeros();
+        capturedElectrons.elem(arma::find_nonfinite(capturedElectrons)).zeros();
+
+        occupiedTraps.row(species) += capturedElectrons;
+
+        const arma::Row<float> releasedElectrons = occupiedTraps.row(species) * static_cast<float>(releaseFraction[species]);
+        occupiedTraps.row(species) -= releasedElectrons;
+
+        charge += releasedElectrons - capturedElectrons;
+    }
+}
+
+
+
+
+
+
+
+/**
  * \brief: Apply the effect of the charge-transfer inefficiency to the map,
  *         using the model described in Short et al., MNRAS 430, 3078-3085 (2013).
  *         Only parallel readout is taken into account here.
@@ -2440,6 +2751,51 @@ void Detector::applyShort2013CTImodel(string map)
                             / (2.0 * maxVolumePerPixel);
     }
 
+    // The traps at the start of the pixel map are in the state left by the rows below the subfield.
+    // Simulate the last of those rows. They contain the background and, if included, the stars along
+    // the columns of the subfield. Rows that are not exposed only have dark signal.
+
+    if (map == "pixelMap")
+    {
+        vector<double> bufferTrapDensity(numTrapSpecies);
+        vector<double> bufferAlpha(numTrapSpecies);
+        vector<double> bufferReleaseFraction(numTrapSpecies);
+
+        for (int ispecies = 0; ispecies < numTrapSpecies; ispecies++)
+        {
+            bufferTrapDensity[ispecies] = meanTrapDensityBOL[ispecies]
+                                          + (meanTrapDensityEOL[ispecies] - meanTrapDensityBOL[ispecies]) * internalTime / missionDuration;
+            bufferAlpha[ispecies] = dwellTime * trapCaptureCrossSection[ispecies] * thermalVelocity * pow(fullWellSaturationLimit, beta)
+                                    / (2.0 * maxVolumePerPixel);
+            bufferReleaseFraction[ispecies] = 1.0 - exp(-dwellTime / releaseTime[ispecies]);
+        }
+
+        const arma::Row<float> background = estimateBackgroundPerColumn();
+        const arma::Row<float> darkSignal(numColumnsPixelMap, arma::fill::value(static_cast<float>(meanDarkSignalPixelMap)));
+        const unsigned int firstBufferRow = (subFieldZeroPointRow > numCTIBufferRows) ? subFieldZeroPointRow - numCTIBufferRows : 0;
+
+        const bool addColumnStars = includesColumnStarsForCTI() && (columnStarMap.n_rows > 0)
+                                    && (columnStarMapFirstRow <= (int)firstBufferRow)
+                                    && (columnStarMapFirstRow + (int)columnStarMap.n_rows >= (int)subFieldZeroPointRow);
+        const float meanThroughputEfficiency = static_cast<float>(getMeanThroughputEfficiency());
+
+        numberOfOccupiedTraps->zeros();
+
+        for (unsigned int ccdRow = firstBufferRow; ccdRow < subFieldZeroPointRow; ccdRow++)
+        {
+            const arma::Row<double> crossedRows(numColumnsPixelMap, arma::fill::value(static_cast<double>(ccdRow + 1)));
+            arma::Row<float> charge = (ccdRow < firstRowExposed) ? darkSignal : background;
+
+            if (addColumnStars && (ccdRow >= firstRowExposed))
+            {
+                charge += columnStarMap.row(ccdRow - columnStarMapFirstRow) * meanThroughputEfficiency;
+                charge = arma::clamp(charge, 0.0f, static_cast<float>(fullWellSaturationLimit));
+            }
+
+            transferRowShort2013(charge, crossedRows, bufferTrapDensity, bufferAlpha, bufferReleaseFraction, *numberOfOccupiedTraps);
+        }
+    }
+
     // Loop over all rows of the pixel/smearing Map.
     // For each row, the computations are done for all columns simultaneously.
 
@@ -2454,10 +2810,10 @@ void Detector::applyShort2013CTImodel(string map)
                                                        + (meanTrapDensityEOL[ispecies] - meanTrapDensityBOL[ispecies]) * internalTime / missionDuration) 
                                                      * (*radiation);
 
-            // At the end of every exposure, right before the readout, assume that all traps of every species are occupied. 
-            // Given the fast capture times, this seems a reasonable assumption.
+            // At the first over-scan row, every column starts with a number of occupied traps equal to
+            // the mean trap density, regardless of the trap state left by the image rows.
 
-            if (irow == 0) {
+            if ((irow == 0) && (map == "smearingMap")) {
                 (*numberOfOccupiedTraps).row(ispecies) = currentTrapDensityMap.row(irow);
             }
             
@@ -2648,6 +3004,13 @@ void Detector::applyOpenShutterSmearing(float exposureTime)
 
     openShutterSmearing += openShutterSmearingOutsideSubField;
 
+    // The stars outside the subfield, along its columns (if included)
+
+    if (includesColumnStarsForSmearing() && (columnStarFluxPerColumn.n_elem == numColumnsPixelMap))
+    {
+        openShutterSmearing += getColumnStarFluxOutsideSubfield() * static_cast<float>(getMeanThroughputEfficiency());   // [e-]
+    }
+
     // Fast camera: lower half of the CCD is shielded off -> no contribution to open-shutter smearing here
 
     arma::Row<float> openShutterSmearingTime = arma::conv_to<arma::Row<float>>::from(numExposedRowsInFOV + numRowsSmearingMap) /
@@ -2656,6 +3019,7 @@ void Detector::applyOpenShutterSmearing(float exposureTime)
     arma::Row<float> factor = openShutterSmearingTime % arma::pow(arma::conv_to<arma::Row<float>>::from(numExposedRowsInFOV), -1) / exposureTime;
 
     openShutterSmearing %= factor;
+    openShutterSmearingPerColumn = openShutterSmearing;
 
     // Add the effect of the open-shutter smearing to the pixel map
 

@@ -14,6 +14,7 @@
 #include <memory>
 #include <tuple>
 #include <map>
+#include <array>
 
 #include "Logger.h"
 #include "Exceptions.h"
@@ -55,6 +56,11 @@ class Sky
         void aberrateSelectedGhostOrigPositions(Platform &platform, string aberrationCorrectionType, double startTime);
         tuple<unsigned int, double, double, double> getSelectedGhostOrig(unsigned int n);
 
+        unsigned long selectColumnStarsWithinCircles(const vector<double> &RA, const vector<double> &dec, const vector<double> &radius,
+                                                     double magnitudeLimit, Unit angleUnit = Angle::degrees);
+        void aberrateSelectedColumnStarPositions(Platform &platform, string aberrationCorrectionType, double startTime);
+        tuple<unsigned int, double, double, double> getSelectedColumnStar(unsigned int n);
+
         double orbitStartTime;
         double zodiacalFlux(double RA, double dec, double lambda1, double lambda2);
         double zodiacalFlux(double RA, double dec, vector<double> &lambda, vector<double> &throughput);
@@ -90,6 +96,29 @@ class Sky
         vector<double> selectedGhostOrigDec;
         vector<double> selectedGhostOrigVmag;
         vector<unsigned int> selectedVariableGhostOrigs;
+
+        // Stars of starDB that are brighter than columnStarCandidateLimit and within the circles of
+        // columnStarCandidateCircle* (the circles of selectColumnStarsWithinCircles(), enlarged with
+        // columnStarCandidateMargin), in the order of starDB. selectColumnStarsWithinCircles() only needs to go
+        // through these, as long as its circles stay within these enlarged circles.
+
+        void prepareColumnStarCandidates(const vector<double> &RA, const vector<double> &dec, const vector<double> &radius,
+                                         double magnitudeLimit);
+        vector<unsigned int> columnStarCandidateID;
+        vector<array<double, 3>> columnStarCandidatePosition;    // (RA [rad], dec [rad], Vmag), copied from starDB
+        vector<double> columnStarCandidateCircleRA;               // [rad]
+        vector<double> columnStarCandidateCircleDec;              // [rad]
+        vector<double> columnStarCandidateCircleRadius;           // [rad], incl. the margin
+        double columnStarCandidateLimit = 0.0;
+        size_t columnStarCandidateDatabaseSize = 0;
+        bool columnStarCandidatesPrepared = false;
+        static constexpr double columnStarCandidateMargin = 2.908882086657216e-4;   // 1 arcmin [rad]
+
+        vector<unsigned int> selectedColumnStarID;     // IDs of the stars selected with selectColumnStarsWithinCircles()
+        vector<double> selectedColumnStarRA;           //      Corresponding selected Right Ascension [rad]
+        vector<double> selectedColumnStarDec;          //      Corresponding Declination              [rad]
+        vector<double> selectedColumnStarVmag;         //      Corresponding Johnson V magnitude
+        vector<unsigned int> selectedVariableColumnStars;    // Indices of those selected column stars that have an entry in deltaMagnitude.
 
 
         string starInputfile;

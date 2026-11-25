@@ -528,14 +528,6 @@ double DetectorWithAnalyticNonGaussianPSF::takeExposure(int exposureNr, double s
 
     Log.info("Detector: Adding noise effects to exposure " + to_string(exposureNr));
 
-    if (exposureNr == beginExposureNr) {
-      if (includeCTIeffects &&
-          (CTImodel == "Short2013" || CTImodel == "Short2013FromFile"))
-      {
-          setInitialNumberOfOccupiedTraps(numberOfOccupiedTrapsPixelMap);
-      }
-    }
-
     readOut(exposureTime);
 
     // If photometric extraction was asked, apply it now
@@ -806,6 +798,75 @@ tuple<bool, double, double> DetectorWithAnalyticNonGaussianPSF::addFlux(double x
 
     return  make_tuple(success, row0, column0);
 }
+
+/**
+ * \brief: Add a star outside the subfield, along its columns, to the column star map, with the same
+ *         PSF as the stars in the subfield (addFluxToMap(), which is also used by derived classes).
+ *
+ * \param xFP:    X-coordinate of the star in the focal plane [mm]
+ * \param yFP:    Y-coordinate of the star in the focal plane [mm]
+ * \param row:    Real-valued CCD row of the star [pixels]
+ * \param column: Real-valued column of the star, relative to the first column of the subfield [pixels]
+ * \param flux:   Flux of the star during the exposure [photons]
+ */
+
+void DetectorWithAnalyticNonGaussianPSF::addStarToColumnMap(double xFP, double yFP, double row, double column, double flux)
+{
+    const double r = rad2deg(camera.getGnomonicRadialDistanceFromOpticalAxis(xFP, yFP));
+    const double p = atan2(yFP, xFP);
+
+    addFluxToMap(columnStarMap, row, column, r, p, flux);
+}
+
+
+
+
+
+
+
+/**
+ * \brief: Add a star outside the subfield, along its columns, to the flux per column
+ *         (columnStarFluxPerColumn), with the same PSF as in addStarToColumnMap(). The PSF depends on
+ *         the position of the star, so it is computed for each star, on a strip of the subfield
+ *         columns that is just high enough for it. The PSF only depends on the fractional part of the
+ *         row, which is kept.
+ *
+ * \param xFP:    X-coordinate of the star in the focal plane [mm]
+ * \param yFP:    Y-coordinate of the star in the focal plane [mm]
+ * \param row:    Real-valued CCD row of the star [pixels]
+ * \param column: Real-valued column of the star, relative to the first column of the subfield [pixels]
+ * \param flux:   Flux of the star during the exposure [photons]
+ */
+
+void DetectorWithAnalyticNonGaussianPSF::addStarToColumnProfile(double xFP, double yFP, double row, double column, double flux)
+{
+    const double r = rad2deg(camera.getGnomonicRadialDistanceFromOpticalAxis(xFP, yFP));
+    const double p = atan2(yFP, xFP);
+
+    // Same size of the PSF as in addFluxToMap()
+
+    double s = (*sigma)();
+
+    if (includeChargeDiffusion)
+        s = sqrt(s * s + chargeDiffusionStrength * chargeDiffusionStrength);
+
+    const int size = 2 * (int)(8. * s + 1) + 1;
+
+    columnStarStrip.zeros(size, numColumnsPixelMap);
+
+    const double stripRow = (size - 1) / 2 + (row - floor(row));
+    addFluxToMap(columnStarStrip, stripRow, column, r, p, flux);
+
+    columnStarFluxPerColumn += arma::sum(columnStarStrip, 0);
+}
+
+
+
+
+
+
+
+
 
 /**
  * \brief Insert the extended ghost with the given radius and flux at the given focal-plane position.

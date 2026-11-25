@@ -1,5 +1,6 @@
 
 #include "Camera.h"
+#include "DetectorWithMappedPSF.h"
 
 
 
@@ -541,6 +542,12 @@ void Camera::exposeDetectorWithStars(Detector &detector, double startTime, doubl
     unsigned long numStars, numPointLikeGhosts;
     tie(numStars, numPointLikeGhosts) = makeStarCatalogSelection(detector, startTime, exposureTime);
 
+    // If needed (e.g. for the CTI), also select the stars outside the sub-field, along its columns.
+
+    const bool includeColumnStars = detector.includesColumnStars();
+    const unsigned long numColumnStars = includeColumnStars ? makeColumnStarSelection(detector, startTime) : 0;
+    bool columnStarsExposed = false;
+
     // If the telescope and/or platform show small variations (e.g. due to jitter) during the exposure,
     // the exposure time is split up in many small intervals, to track the effect of these variations
     // on the exposure. The largest time interval for which the variations can still be reliably tracked
@@ -585,6 +592,15 @@ void Camera::exposeDetectorWithStars(Detector &detector, double startTime, doubl
 
         if(includeExtendedGhosts)
             coefficients = (*extendedGhostRadiusCoefficients)();
+
+        // The stars along the columns of the sub-field are added once, for the whole exposure,
+        // at their position at the start of the exposure.
+
+        if (includeColumnStars && !columnStarsExposed)
+        {
+            exposeColumnsWithStars(detector, numColumnStars, fluxFactor, exposureTime);
+            columnStarsExposed = true;
+        }
 
         // Loop over the selected stars and add their flux to the sub-field
         // Also add the extended ghosts (if enabled)
@@ -986,6 +1002,205 @@ tuple<unsigned long, unsigned long> Camera::makeStarCatalogSelection(Detector &d
 
     return tie(numStars, numPointLikeGhosts);
 }
+
+
+
+
+
+/**
+ * \brief Select the stars from the catalogue that are outside the sub-field, along its columns, over the
+ *        whole height of the CCD. Only stars brighter than the magnitude limit of the detector are selected.
+ *        This selection is kept apart from the one of makeStarCatalogSelection().
+ *
+ * \param detector:  Detector for which to make the selection.
+ * \param startTime: Start time of the exposure [s].
+ *
+ * \return Number of selected stars.
+ */
+
+unsigned long Camera::makeColumnStarSelection(Detector &detector, double startTime)
+{
+    // Sky coordinates of a focal-plane position, after the inverse field distortion (if distortion was
+    // enabled and applyInverse is true), as in makeStarCatalogSelection()
+
+    auto toSkyCoordinates = [&] (double xmm, double ymm, bool applyInverse)
+    {
+        if (applyInverse && isMapped)
+        {
+            detector.applyInverseDistortion(xmm, ymm);
+        }
+        else if (applyInverse && includeFieldDistortion)
+        {
+            tie(xmm, ymm) = distortedToUndistortedFocalPlaneCoordinates(xmm, ymm);
+        }
+
+        return focalPlaneToSkyCoordinates(xmm, ymm);
+    };
+
+    // The strip with the sub-field columns is long and narrow, so it is cut into segments, and a circle
+    // on the sky is put around each of them. The stars in these circles that are not on the strip are
+    // removed later on, when their pixel coordinates are known.
+
+    vector<double> circleRA, circleDec, circleRadius;     // [radians]
+
+    auto addCircle = [&] (double centreXmm, double centreYmm, double corner00Xmm, double corner00Ymm,
+                          double corner11Xmm, double corner11Ymm, bool applyInverse, double extraRadius)
+    {
+        double centreRA, centreDec, corner00RA, corner00Dec, corner11RA, corner11Dec;
+        tie(centreRA, centreDec) = toSkyCoordinates(centreXmm, centreYmm, applyInverse);
+        tie(corner00RA, corner00Dec) = toSkyCoordinates(corner00Xmm, corner00Ymm, applyInverse);
+        tie(corner11RA, corner11Dec) = toSkyCoordinates(corner11Xmm, corner11Ymm, applyInverse);
+
+        const double radius = angularDistanceBetween(corner00RA, corner00Dec, corner11RA, corner11Dec, Angle::radians) / 2.0;
+
+        circleRA.push_back(centreRA);
+        circleDec.push_back(centreDec);
+        circleRadius.push_back((radius + extraRadius) * 1.1);
+    };
+
+    // The mapped field distortion (DetectorWithMappedPSF::applyDistortion()) is not applied beyond a
+    // radius of 80 mm in the focal plane, where it jumps from a few mm to zero. Close to that radius, a
+    // pixel can therefore receive light from two positions on the sky: a distorted one from inside 80 mm,
+    // and an undistorted one from beyond 80 mm. The inverse distortion finds only one of them, so for the
+    // segments close to or beyond 80 mm the distortion is ignored, and the circle is enlarged with the
+    // largest distortion of the distortion map, to also contain the other position.
+
+    const double radiusWithoutMappedDistortion = 79.0;     // [mm], with a margin of 1 mm on the 80 mm
+
+    const auto segments = detector.getFocalPlaneCoordinatesOfColumnStripSegments();
+
+    if (isMapped)
+    {
+        // The inverse of the mapped field distortion is a slow search, and the result doesn't change
+        // in time, so it is only computed again when the segments change.
+
+        if (segments != columnStripSegments)
+        {
+            columnStripSegments = segments;
+            columnStripSegmentsInverse.clear();
+
+            const double maxDistortion = dynamic_cast<DetectorWithMappedPSF&>(detector).getMaxMappedFieldDistortion();   // [mm]
+
+            for (auto const& segment: segments)
+            {
+                double centreXmm, centreYmm, corner00Xmm, corner00Ymm, corner11Xmm, corner11Ymm;
+                tie(centreXmm, centreYmm, corner00Xmm, corner00Ymm, corner11Xmm, corner11Ymm) = segment;
+
+                const double centreRadius = hypot(centreXmm, centreYmm);                                                         // [mm]
+                const double maxRadius = max({centreRadius, hypot(corner00Xmm, corner00Ymm), hypot(corner11Xmm, corner11Ymm)});   // [mm]
+
+                if ((maxRadius > radiusWithoutMappedDistortion) && (centreRadius > 0.0))
+                {
+                    // No distortion, and the centre shifted over the largest distortion of the distortion map,
+                    // to enlarge the circle with the distortion jump
+
+                    const double xShifted = centreXmm * (centreRadius - maxDistortion) / centreRadius;
+                    const double yShifted = centreYmm * (centreRadius - maxDistortion) / centreRadius;
+
+                    columnStripSegmentsInverse.push_back({centreXmm, centreYmm, corner00Xmm, corner00Ymm, corner11Xmm, corner11Ymm,
+                                                          xShifted, yShifted});
+                }
+                else
+                {
+                    detector.applyInverseDistortion(centreXmm, centreYmm);
+                    detector.applyInverseDistortion(corner00Xmm, corner00Ymm);
+                    detector.applyInverseDistortion(corner11Xmm, corner11Ymm);
+
+                    const double nan = numeric_limits<double>::quiet_NaN();
+                    columnStripSegmentsInverse.push_back({centreXmm, centreYmm, corner00Xmm, corner00Ymm, corner11Xmm, corner11Ymm, nan, nan});
+                }
+            }
+        }
+
+        for (auto const& point: columnStripSegmentsInverse)
+        {
+            double distortionJump = 0.0;     // [radians]
+
+            if (!std::isnan(point[6]))
+            {
+                double centreRA, centreDec, shiftedRA, shiftedDec;
+                tie(centreRA, centreDec) = focalPlaneToSkyCoordinates(point[0], point[1]);
+                tie(shiftedRA, shiftedDec) = focalPlaneToSkyCoordinates(point[6], point[7]);
+                distortionJump = angularDistanceBetween(centreRA, centreDec, shiftedRA, shiftedDec, Angle::radians);
+            }
+
+            addCircle(point[0], point[1], point[2], point[3], point[4], point[5], false, distortionJump);
+        }
+    }
+    else
+    {
+        for (auto const& segment: segments)
+        {
+            double centreXmm, centreYmm, corner00Xmm, corner00Ymm, corner11Xmm, corner11Ymm;
+            tie(centreXmm, centreYmm, corner00Xmm, corner00Ymm, corner11Xmm, corner11Ymm) = segment;
+
+            addCircle(centreXmm, centreYmm, corner00Xmm, corner00Ymm, corner11Xmm, corner11Ymm, true, 0.0);
+        }
+    }
+
+    const unsigned long numColumnStars = sky.selectColumnStarsWithinCircles(circleRA, circleDec, circleRadius,
+                                                                            detector.getColumnStarsMagnitudeLimit(), Angle::radians);
+    Log.info("Camera: Found " + to_string(numColumnStars) + " stars brighter than V = " + to_string(detector.getColumnStarsMagnitudeLimit())
+             + " near the columns of the sub-field");
+
+    if (includeAberrationCorrection)
+    {
+        sky.aberrateSelectedColumnStarPositions(platform, aberrationCorrectionType, startTime);
+    }
+
+    return numColumnStars;
+}
+
+
+
+
+
+
+
+/**
+ * \brief Add the stars selected with makeColumnStarSelection() to the column star map of the detector,
+ *        with their flux of the whole exposure. The time-dependent parameters (pointing, jitter, ...)
+ *        are the ones that were last updated, and the positions are computed in the same way as for
+ *        the stars in the sub-field.
+ *
+ * \param detector:       Detector to which the stars are added.
+ * \param numColumnStars: Number of selected column stars.
+ * \param fluxFactor:     Photon flux of a V=0 star [photons / s].
+ * \param exposureTime:   Duration of one exposure [s].
+ */
+
+void Camera::exposeColumnsWithStars(Detector &detector, unsigned long numColumnStars, double fluxFactor, double exposureTime)
+{
+    detector.resetColumnStarMap();
+
+    unsigned long starID;
+    double raStar, decStar, magStar, xStar, yStar;
+    unsigned long numStarsAdded = 0;
+
+    for (unsigned long starIndex = 0; starIndex < numColumnStars; starIndex++)
+    {
+        tie(starID, raStar, decStar, magStar) = sky.getSelectedColumnStar(starIndex);
+        tie(xStar, yStar) = skyToFocalPlaneCoordinates(raStar, decStar);
+
+        if (isMapped)
+        {
+            detector.applyDistortion(xStar, yStar);
+        }
+        else if (includeFieldDistortion)
+        {
+            tie(xStar, yStar) = undistortedToDistortedFocalPlaneCoordinates(xStar, yStar);
+        }
+
+        const double fluxStar = fluxFactor * pow(10.0, -0.4 * magStar) * exposureTime;    // [photons]
+
+        if (detector.addColumnStar(xStar, yStar, fluxStar))
+            numStarsAdded++;
+    }
+
+    Log.info("Camera: added " + to_string(numStarsAdded) + " stars along the columns of the sub-field");
+}
+
+
 
 
 
